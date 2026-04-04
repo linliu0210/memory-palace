@@ -122,13 +122,46 @@ uv run pytest tests/ -q
 - 被修改的模块 API 签名发生了变化（如新增了必须参数），测试代码需要适配
 - 必须在 DISPATCH_LOG 的 `Issues found` 中**显式声明**修改了哪个测试及原因
 
+### 规则 2.5: 测试 = 可执行规约（不可变契约）
+
+> [!CAUTION]
+> TDD 测试一旦写定并通过 RED 验证，就不是"测试代码"——它是**可执行的规格说明书**。
+
+**核心原则**：测试先于实现写出，定义的是系统"应该做什么"。它的地位等同于 SPEC.md 中的接口契约。
+
+**不可变性规则**：
+- 测试在 RED 阶段写定后，进入**冻结状态**
+- GREEN 阶段仅允许写产品代码使测试通过，**禁止反向修改测试来适配实现**
+- REFACTOR 阶段可以重构测试的内部结构（提取 helper、改善 fixture），但**断言语义不得改变**
+
+**违规判定**：
+```python
+# ❌ 违规：实现困难就放宽断言
+# 原测试
+assert result.importance == 0.8
+# "改进"后
+assert result.importance > 0.5  # "差不多就行"
+
+# ❌ 违规：实现返回了意外格式就改测试
+# 原测试
+assert isinstance(items, list)
+assert len(items) == 2
+# "适配"后
+assert items is not None  # "只要不是 None 就好"
+```
+
+**如果测试本身有 bug**（Spec 描述错误、fixture 数据不合理）：
+1. 在 DISPATCH_LOG 中记录发现
+2. 请求 orchestrator 批准修改
+3. 修改后重新走 RED 验证确认测试失败原因正确
+
 ### 规则 3: Red-Green-Refactor
 每个新功能严格遵循 TDD 循环：
 1. **RED** — 写一个失败的测试（`pytest tests/test_xxx.py::test_name -v` → FAILED）
 2. **Verify RED** — 确认失败原因是"功能缺失"而非"语法错误"
 3. **GREEN** — 写最小代码使测试通过
 4. **Verify GREEN** — 确认所有现有测试仍通过
-5. **REFACTOR** — 清理代码，保持所有测试绿色
+5. **REFACTOR** — 清理代码，保持所有测试绿色；可重构测试结构但**断言语义不变**
 
 ### 规则 4: 实现顺序
 严格按依赖拓扑排序实现，不得跳 Round：
