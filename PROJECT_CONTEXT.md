@@ -150,7 +150,8 @@ src/memory_palace/
 <!-- SEMI-FIXED: 每次 merge 后更新此数字 -->
 
 ```
-当前 baseline: 0 passed (项目未开始)
+当前 baseline: 0 passed, 135 skipped (全 RED — TDD specs 已冻结)
+冻结 tag: tdd-spec-v0.1 @ dc8f30e
 运行命令: uv run pytest tests/ -q
 ```
 
