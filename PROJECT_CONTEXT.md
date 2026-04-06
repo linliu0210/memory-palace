@@ -3,7 +3,7 @@
 > **⚡ SEMI-FIXED**: 本文档随项目里程碑更新，不随每次任务变化。
 > Orchestrator 在合并重大分支后**必须**更新本文档。
 >
-> **最后更新**: 2026-04-04 | **更新原因**: 项目初始化 — v0.1 Skeleton 开始
+> **最后更新**: 2026-04-06 | **更新原因**: SPEC v2.0 重构 — 基于 CEO 架构指南全面重写
 
 ---
 
@@ -135,8 +135,9 @@ src/memory_palace/
 
 | 任务 | 状态 | 分支 |
 |------|------|------|
-| Spec 设计 (v1.1) | ✅ 完成 | — |
-| Prompt 体系创建 | ✅ 完成 | — |
+| Spec 设计 (v2.0 重构) | ✅ 完成 | — |
+| 三层 Prompt 体系 | ✅ 完成 | — |
+| CEO 架构指南 | ✅ 完成 | — |
 | **v0.1 Round 1: Foundation** | 🔴 待开始 | — |
 | v0.1 Round 2: Models | 🔴 待开始 | — |
 | v0.1 Round 3: Store | 🔴 待开始 | — |
@@ -157,13 +158,14 @@ src/memory_palace/
 
 ## 版本规划
 
-| 版本 | 代号 | 目标分数 | 核心交付 |
-|------|------|---------|---------|
-| **v0.1** | 🦴 Skeleton | **60 分** | Pipeline 可跑通；全部功能构件就位；单层存储 |
-| v0.2 | 🧱 Foundation | 80 分 | 三层存储完整；混合检索；搬运小人自动整理 |
-| v1.0 | 🏛️ Palace | 95 分 | Sleep-time Compute；空间邻近性；审计追踪；监控 |
+| 版本 | 代号 | 分数 | 核心交付 | 隐喻完成度 |
+|------|------|------|---------|-----------|
+| **v0.1** | 🦴 Skeleton | **60** | Pipeline 跑通；全构件就位；两层存储 | 宫殿有骨架，搬运小人能走路 |
+| v0.2 | 🧱 Foundation | 80 | 三层存储完整；混合检索；搬运小人自动化+反思 | 有房间有路径，小人能搬运整理 |
+| v1.0 | 🏛️ Palace | 95 | Sleep-time 自动化；空间邻近性；监控仪表盘 | 记忆宫殿完全建成，小人高效自治 |
 
-**详细 Spec**: [spec.md](file:///Users/link/.gemini/antigravity/brain/363f3fd5-6335-403e-8eca-702c7398c766/spec.md)
+**详细 Spec**: [SPEC v2.0](file:///Users/link/.gemini/antigravity/brain/363f3fd5-6335-403e-8eca-702c7398c766/spec.md)  
+**CEO 架构指南**: [ceo_architecture_guide.md](file:///Users/link/.gemini/antigravity/brain/363f3fd5-6335-403e-8eca-702c7398c766/ceo_architecture_guide.md)
 
 ---
 
