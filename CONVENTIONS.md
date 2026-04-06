@@ -273,6 +273,41 @@ ruff check && ruff format --check
 
 ---
 
+## 八、Known Gotchas & Library Quirks ⚙️
+
+> [!CAUTION]
+> 以下是实现过程中已知的技术陷阱。每位 Agent 在开始 Round 实现前**必须阅读**。
+
+```python
+# === Storage ===
+# CRITICAL: SQLite FTS5 中文分词需要 simple tokenizer（不支持 ICU）
+# CRITICAL: JSON 文件原子写入必须用 write-to-tmp + os.rename 模式，防止断电数据损坏
+# CRITICAL: Core Store 超过 budget 时必须优雅降级（prune 最低分记忆），不能直接报错
+
+# === Pydantic v2 ===
+# CRITICAL: model_validate_json() 只接受 str/bytes，不接受 dict — 用 model_validate() 替代
+# CRITICAL: model_dump() 默认 mode='python'，写 JSON 需要 mode='json' 或用 model_dump_json()
+# CRITICAL: datetime 字段序列化需要在 model_config 中设置 json_encoders 或用 PlainSerializer
+
+# === structlog ===
+# CRITICAL: structlog 必须在进程入口配置一次，重复 configure() 会丢失处理器链
+# CRITICAL: 测试中需要 structlog.testing.capture_logs() 而不是 mock
+
+# === pytest ===
+# CRITICAL: pytest-asyncio auto 模式需要 pyproject.toml 中显式声明 asyncio_mode = "auto"
+# CRITICAL: tmp_path fixture 每个 test function 独立，tmp_path_factory 可跨 session 共享
+
+# === LLM ===
+# CRITICAL: MockLLM 采用 Protocol 兼容（非继承），确保 isinstance check 不可用——使用 structural subtyping
+# CRITICAL: LLM 返回可能是 malformed JSON — FactExtractor/Reconcile 必须有 JSON parse fallback
+# CRITICAL: uuid4() 在测试中不确定——需要固定 seed 或 monkeypatch uuid.uuid4
+
+# === 衰减公式 ===
+# CRITICAL: 指数衰减 decay = exp(-λ·Δt) 中 λ 的量纲是 1/小时，不是 1/天——注意单位转换
+```
+
+---
+
 ## 图例
 
 | 标记 | 含义 |
