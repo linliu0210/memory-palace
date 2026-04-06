@@ -216,6 +216,18 @@ uv run pytest tests/ -q
 
 ## 五、Git 规范 ⚙️
 
+### 5.0 分支保护（强制）
+
+> **⚠️ `main` 分支是稳定基线。所有产品代码变更必须通过 feature branch → 验证 → merge 流程。**
+
+| 规则 | 说明 |
+|------|------|
+| **main 只读** | `main` 分支禁止直接 push 产品代码（`src/`、`tests/` 内的 `.py` 文件）。仅允许直接 commit 文档(`.md`) 和配置文件(`.toml`, `.env.*`) |
+| **Feature Branch 必须** | 所有实现工作必须在 `feat/[scope]-[description]` 分支上进行 |
+| **Merge 前门** | 合并回 main 前必须满足：(1) `uv run pytest tests/ -q` 全绿；(2) `ruff check && ruff format --check` 零 error；(3) DISPATCH_LOG entry 已追加 |
+| **--no-ff 强制** | Merge 使用 `--no-ff` 保留分支历史，便于 `git log --graph` 追溯 |
+| **Tag 保护** | `tdd-spec-v0.1` tag 不可移动、不可删除（冻结测试规约的对照基准） |
+
 ### 分支命名
 ```
 feat/[scope]-[description]     # 新功能

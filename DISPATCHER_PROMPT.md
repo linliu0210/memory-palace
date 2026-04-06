@@ -16,6 +16,7 @@
 - **禁止直接编写产品代码**（不写 `.py` 文件、不 `git commit`）
 - **禁止直接修改测试文件**
 - **禁止跳过架构思考直接行动**
+- **禁止在 `main` 分支上直接提交产品代码**（详见 §七 Git 治理）
 
 ### ✅ 你的职责
 
@@ -460,11 +461,58 @@ Layer 2: Graceful     → log warning + skip（单条失败不中断批量）
 Layer 3: Fatal        → RuntimeError（存储/LLM 不可用）
 ```
 
-### Git 规范
+### Git 治理（分支保护 — 强制）
 
-- 分支: `feat/[scope]-[description]`  Scope = foundation|models|store|engine|service|integration|e2e
-- Commit: Conventional Commits（`feat(store): add RecallStore with FTS5`）
-- 原子性: 一个 commit 做一件事
+> [!CAUTION]
+> **`main` 分支是稳定基线。所有产品代码变更必须通过 feature branch → 验证 → merge 流程。**
+
+#### 分支保护规则
+
+| 规则 | 说明 |
+|------|------|
+| **main 只读** | `main` 分支禁止直接 push 产品代码（`src/`、`tests/` 内的 `.py` 文件）。仅允许直接 commit 文档(`*.md`) 和配置文件(`*.toml`, `.env.*`) |
+| **Feature Branch 必须** | 所有实现工作必须在 `feat/[scope]-[description]` 分支上进行 |
+| **Merge 前门** | Feature branch 合并回 main 前，必须满足：(1) `uv run pytest tests/ -q` 全绿；(2) `ruff check && ruff format --check` 零 error；(3) DISPATCH_LOG entry 已追加 |
+| **Tag 保护** | `tdd-spec-v0.1` tag 不可移动、不可删除（冻结测试规约的对照基准） |
+
+#### 分支命名
+
+```
+feat/[scope]-[description]     # 新功能  (e.g. feat/foundation-round1)
+fix/[scope]-[description]      # 修复    (e.g. fix/store-fts5-tokenizer)
+refactor/[scope]-[description] # 重构    (e.g. refactor/engine-scoring)
+```
+
+Scope 枚举: `foundation`, `models`, `store`, `engine`, `service`, `integration`, `e2e`
+
+#### Merge 流程
+
+```
+1. Subagent 在 feat/ 分支完成工作
+2. 运行全量验证 (pytest + ruff)
+3. 追加 DISPATCH_LOG entry
+4. Dispatcher 审查 → 批准 merge
+5. git checkout main && git merge --no-ff feat/xxx
+6. Dispatcher 更新 PROJECT_CONTEXT.md (状态 + baseline)
+7. 删除已合并的 feat/ 分支
+```
+
+> **--no-ff 强制**: Merge 使用 `--no-ff` 保留分支历史，便于 `git log --graph` 追溯。
+
+#### Commit Message
+
+[Conventional Commits](https://www.conventionalcommits.org/) 格式：
+```
+feat(store): add RecallStore with FTS5 search
+fix(engine): handle malformed LLM response in FactExtractor
+refactor(service): extract scoring logic from MemoryService
+test(e2e): add full lifecycle pipeline test
+docs: update PROJECT_CONTEXT.md for v0.1 baseline
+```
+
+#### 原子性
+
+一个 commit 做一件事。如果任务包含多个逻辑独立的改动（如 "Store + Engine"），应拆为多个 commit。
 
 ---
 
