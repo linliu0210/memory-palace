@@ -269,18 +269,83 @@ ruff check && ruff format --check
 
 ## 七、Dispatch Log 协议 ⚙️
 
-完成任务后，在 `DISPATCH_LOG.md` **末尾追加** entry（不修改已有内容）：
+> `DISPATCH_LOG.md` 是项目的**唯一状态真相源**。
+> **最新 block = 当前项目状态**。新 subagent 只需读最后几个 block 即可了解全局。
+
+### 7.1 Block 结构
+
+每个任务在 DISPATCH_LOG 中占一个 `##` block，包含三个 `###` sub-block：
 
 ```markdown
-## [YYYY-MM-DDTHH:MM] branch-name — 任务简述 STATUS_EMOJI
-- **Agent**: 执行者
-- **Status**: DONE / IN_PROGRESS / BLOCKED
-- **Base**: 基准分支 @ commit hash
-- **Files changed**: 新增(NEW)/修改(MOD)/删除(DEL) 清单
-- **Key decisions**: 1-3 条设计决策
-- **Issues found**: 执行中发现的问题（包括"想改但被禁止的文件"）
-- **Tests**: before → after（如 0→15 passed）
-- **Merge note**: 合并风险评估
+## TASK-[NNN]: [任务简述] [STATUS_EMOJI]
+
+### 📋 Dispatch                    ← Dispatcher 创建任务时填写
+- **Round**: [N]
+- **Branch**: `feat/[branch-name]`
+- **Priority**: [P0/P1/P2]
+- **Dispatched**: YYYY-MM-DDTHH:MM
+- **Status**: 🟡 IN_PROGRESS / ✅ DONE / 🚫 BLOCKED
+- **Base**: main @ [commit hash]
+- **Parallel Protected**: [被保护文件，或「无」]
+
+### 🔨 Dev                        ← Dev (Claude Code) 完成后填写
+- **Agent**: Claude Code
+- **Completed**: YYYY-MM-DDTHH:MM
+- **Walkthrough**:
+  - **实现摘要**: [1-3 句话]
+  - **文件清单**:
+    - `NEW` path/to/file.py — 简述
+    - `MOD` path/to/file.py — 改了什么
+  - **关键设计决策**:
+    1. [决策 + 理由]
+  - **Tests**: before → after (如 0→21 passed, 135→114 skipped)
+  - **已知风险**: [后续 Round 需注意 / 想改但被保护的文件]
+
+### 🔍 Review                     ← Reviewer (Codex) 审查后填写
+- **Agent**: Codex
+- **Reviewed**: YYYY-MM-DDTHH:MM
+- **Verdict**: ✅ APPROVED / ⚠️ CHANGES_REQUESTED / 🚫 REJECTED
+- **Findings**:
+  1. [severity: LOW/MEDIUM/HIGH/CRITICAL] — [描述 + 建议]
+- **Test Verification**: `uv run pytest tests/ -q` → [结果]
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/` → [clean / 差异]
+```
+
+### 7.2 读写规则
+
+| 谁 | 可读 | 可写 |
+|----|------|------|
+| Dispatcher (Antigravity) | ✅ 全部 | ✅ 创建 block + 📋 Dispatch + 更新 Status |
+| Dev (Claude Code) | ✅ 全部 | ✅ 仅写自己任务的 `🔨 Dev` sub-block |
+| Reviewer (Codex) | ✅ 全部 | ✅ 仅写自己任务的 `🔍 Review` sub-block |
+
+### 7.3 Walkthrough 强制规则
+
+> [!CAUTION]
+> Dev 和 Reviewer 完成任务后，**必须**填写对应的 sub-block。
+> 缺少 walkthrough 的任务视为**未完成**。
+
+Dev walkthrough 必须包含以下 5 项（缺一不可）：
+1. **实现摘要** — 做了什么（1-3 句话）
+2. **文件清单** — NEW/MOD/DEL 标注
+3. **关键设计决策** — 为什么这样做（1-3 条）
+4. **Tests** — before→after 数字
+5. **已知风险** — 后续影响或阻塞
+
+### 7.4 任务生命周期
+
+```
+Dispatcher 创建 block (📋 Dispatch, Status=🟡)
+    │
+    ▼
+Dev (Claude Code) 实现 → 写 🔨 Dev walkthrough
+    │
+    ▼
+Reviewer (Codex) 审查 → 写 🔍 Review findings
+    │
+    ├── ✅ APPROVED → Dispatcher merge + Status=✅
+    ├── ⚠️ CHANGES → Dispatcher 发修复 prompt → Dev 再改
+    └── 🚫 REJECTED → Dispatcher 重新设计
 ```
 
 ---
