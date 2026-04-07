@@ -88,12 +88,12 @@ src/memory_palace/
 │   ├── tools.py                 LLM Tool 定义 (MemoryTools)
 │   └── cli.py                   CLI 调试工具 (palace save/search/curate/inspect)
 │
-├── 🔴 foundation/          基础设施
+├── 🟢 foundation/          基础设施 ✅ Round 1
 │   ├── audit_log.py             Append-only JSONL 审计日志
 │   ├── llm.py                   LLMProvider Protocol + get_api_key() + ModelConfig
 │   └── embedding.py             Embedding 提供者抽象 [v0.2]
 │
-└── config.py                配置管理 (Pydantic Settings)
+└── 🟢 config.py             配置管理 (Pydantic Settings) ✅ Round 1
 ```
 
 ### 状态图例
@@ -122,8 +122,8 @@ src/memory_palace/
 
 | 维度 | 数据 |
 |------|------|
-| 源代码 | 0 个 .py（未开始） |
-| 测试 | 0 个测试文件, 0 passed |
+| 源代码 | 3 个 .py (audit_log, llm, config) |
+| 测试 | 3 个测试文件, 29 passed |
 | Prompt 模板 | 2 个 (FactExtractor + Reconcile) |
 | 依赖 | pydantic, openai, typer, rich, pyyaml, structlog |
 
@@ -138,8 +138,8 @@ src/memory_palace/
 | Spec 设计 (v2.0 重构) | ✅ 完成 | — |
 | 三层 Prompt 体系 | ✅ 完成 | — |
 | CEO 架构指南 | ✅ 完成 | — |
-| **v0.1 Round 1: Foundation** | 🔴 待开始 | — |
-| v0.1 Round 2: Models | 🔴 待开始 | — |
+| **v0.1 Round 1: Foundation** | ✅ 完成 | `feat/foundation-round1` → merged |
+| **v0.1 Round 2: Models** | 🟡 进行中 | `feat/models-round2` |
 | v0.1 Round 3: Store | 🔴 待开始 | — |
 | v0.1 Round 4: Engine | 🔴 待开始 | — |
 | v0.1 Round 5: Service | 🔴 待开始 | — |
@@ -150,7 +150,7 @@ src/memory_palace/
 <!-- SEMI-FIXED: 每次 merge 后更新此数字 -->
 
 ```
-当前 baseline: 0 passed, 135 skipped (全 RED — TDD specs 已冻结)
+当前 baseline: 29 passed, 106 skipped (Round 1 Foundation ✅)
 冻结 tag: tdd-spec-v0.1 @ dc8f30e
 运行命令: uv run pytest tests/ -q
 ```

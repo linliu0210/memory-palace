@@ -219,9 +219,34 @@ _N/A — 纯文档重设计，无需 review_
 - **Parallel Protected**: 无
 
 ### 🔨 Dev
-_(等待 Dev Agent 填写)_
+- **Agent**: Claude Code (Opus 4.6)
+- **Completed**: 2026-04-07T20:41
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 2 全部数据模型——MemoryItem (20 字段 + content 非空校验) + 3 个 StrEnum (MemoryStatus/Tier/Type) + Room，CuratorReport (6 指标 + 2 健康分)，audit.py 从 foundation 层 re-export AuditAction/AuditEntry。严格 TDD，28 个测试全绿。
+  - **文件清单**:
+    - `MOD` src/memory_palace/models/memory.py — MemoryItem + MemoryStatus + MemoryTier + MemoryType + Room 全量实现
+    - `MOD` src/memory_palace/models/audit.py — Re-export AuditAction/AuditEntry from foundation.audit_log
+    - `MOD` src/memory_palace/models/curator.py — CuratorReport (run_id + 6 counters + 2 health scores)
+    - `MOD` src/memory_palace/models/__init__.py — 导出 8 个公共 API 符号
+    - `MOD` tests/test_models/test_memory.py — 移除 skip，填充 18 个测试体
+    - `MOD` tests/test_models/test_audit.py — 移除 skip，填充 5 个测试体
+    - `MOD` tests/test_models/test_curator.py — 移除 skip，填充 5 个测试体
+  - **关键设计决策**:
+    1. Enums 用 `StrEnum` 替代 `(str, Enum)` 双继承——与 Round 1 foundation/audit_log.py 的 AuditAction 保持一致，满足 ruff UP042
+    2. `models/audit.py` 只做 re-export，AuditEntry/AuditAction 的唯一定义在 `foundation/audit_log.py`——避免重复定义，保持单一真相源
+    3. content 非空校验用 `@field_validator` 实现（捕获空字符串和纯空白），而非 `min_length=1`（后者不捕获 whitespace-only）
+  - **Tests**: 29→57 passed, 106→78 skipped, 0 failed
+  - **已知风险**: 无。Round 3 Store 层将依赖这些 models，接口已稳定
 
 ### 🔍 Review
-_(等待 Review Agent 填写)_
+- **Agent**: Codex (Antigravity)
+- **Reviewed**: 2026-04-07T21:05
+- **Verdict**: ✅ APPROVED
+- **Findings**: None — all checklist items pass cleanly.
+  1. [LOW — informational] `CuratorReport.duration_seconds` uses `float = 0` (int literal) rather than `float = 0.0`. Functionally identical in Python/Pydantic, but `0.0` would be marginally more idiomatic for a float field. Not worth a code change.
+- **Test Verification**: `uv run pytest tests/ -q` → 57 passed, 78 skipped
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/test_models/` → clean: only `pytest.skip()` removal + test body fill-in + import additions; docstrings, class structure, and assertion semantics unchanged. Non-Round2 test directories (`test_store/`, `test_engine/`, `test_service/`, `test_e2e/`) have zero diff.
+- **SPEC Alignment**: All 4 model contracts (§2.1 MemoryItem 20 fields, §2.2 AuditEntry 5 fields + AuditAction 7 values, §2.3 CuratorReport 14 fields, §2.4 Room 5 fields) verified field-by-field via runtime introspection. Re-export identity confirmed (`AuditAction is foundation.AuditAction` → True).
+- **Architecture**: `models/` depends only on `foundation/`; `git diff main..feat/models-round2 -- src/memory_palace/foundation/` → empty (Round 1 code untouched). `ruff check src/memory_palace/models/` → 0 errors.
 
 ---
