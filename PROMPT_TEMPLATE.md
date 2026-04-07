@@ -231,7 +231,7 @@ _待 Codex 填写_
 
 | Round | 标题 | 测试文件 | 实现文件 | Tests |
 |-------|------|---------|---------| ------|
-| 1 | Foundation | test_foundation/ | foundation/ + config.py | 21 |
+| 1 | Foundation | test_foundation/ | foundation/ + config.py | 29 |
 | 2 | Models | test_models/ | models/ | 21 |
 | 3 | Store | test_store/ | store/ | 23 |
 | 4 | Engine | test_engine/ | engine/ | 24 |
