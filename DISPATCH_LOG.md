@@ -122,3 +122,36 @@ _N/A — 纯测试 + 文档，无需 review_
 _N/A — 纯文档 + 骨架，无需 review_
 
 ---
+
+## TASK-004: Dispatch 体系重设计（Dev/Reviewer 分工 + Block 结构） ✅
+
+### 📋 Dispatch
+- **Round**: N/A (基础设施)
+- **Branch**: `main` (纯文档直接提交)
+- **Priority**: P0
+- **Dispatched**: 2026-04-07T13:55
+- **Status**: ✅ DONE
+- **Base**: `095b5c1`
+- **Merged**: 直接提交 main @ `2d2a2b0`
+
+### 🔨 Dev
+- **Agent**: Antigravity (Dispatcher)
+- **Completed**: 2026-04-07T14:05
+- **Walkthrough**:
+  - **实现摘要**: 重设计整个 Dispatch 体系——DISPATCH_LOG 从扁平 entry 改为 task-block 结构（📋/🔨/🔍 三个 sub-block），PROMPT_TEMPLATE 拆分为 Dev (Claude Code) 和 Reviewer (Codex) 两套模板，CONVENTIONS 更新 §七 协议，DISPATCHER_PROMPT 升级 v1.1
+  - **文件清单**:
+    - `MOD` DISPATCH_LOG.md — 全量重写为 block 结构，迁移 3 条历史 entry
+    - `MOD` PROMPT_TEMPLATE.md — 全量重写：§A Dev / §B Reviewer / §C Dispatcher / §D-H 辅助
+    - `MOD` CONVENTIONS.md — §七 更新为 block 格式 + 读写规则 + walkthrough 强制
+    - `MOD` DISPATCHER_PROMPT.md — v1.1: 添加 Codex 角色、9 步生命周期、prompt 引用
+  - **关键设计决策**:
+    1. 不引入 KANBAN.md — DISPATCH_LOG 最新 block = 当前项目状态，单一真相源
+    2. 三角色分工：Dispatcher (Antigravity) / Dev (Claude Code) / Reviewer (Codex)
+    3. Walkthrough 强制：Dev 5 项必填 + Reviewer findings 结构化记录
+  - **Tests**: N/A (无代码)
+  - **已知风险**: 并行 agent 同时写 DISPATCH_LOG 可能产生 git 冲突，需 Dispatcher 手动 resolve
+
+### 🔍 Review
+_N/A — 纯文档重设计，无需 review_
+
+---
