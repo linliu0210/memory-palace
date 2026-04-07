@@ -155,3 +155,22 @@ _N/A — 纯文档 + 骨架，无需 review_
 _N/A — 纯文档重设计，无需 review_
 
 ---
+
+## TASK-005: [Round 1] Foundation — AuditLog + Config + LLMProvider 🟡
+
+### 📋 Dispatch
+- **Round**: 1
+- **Branch**: `feat/foundation-round1`
+- **Priority**: P0
+- **Dispatched**: 2026-04-07T14:14
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ `7ee32f2`
+- **Parallel Protected**: 无
+
+### 🔨 Dev
+_待 Claude Code 填写_
+
+### 🔍 Review
+_待 Codex 填写_
+
+---
