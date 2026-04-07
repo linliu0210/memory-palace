@@ -319,6 +319,21 @@ ruff check && ruff format --check
 | Dev (Claude Code) | ✅ 全部 | ✅ 仅写自己任务的 `🔨 Dev` sub-block |
 | Reviewer (Codex) | ✅ 全部 | ✅ 仅写自己任务的 `🔍 Review` sub-block |
 
+> [!CAUTION]
+> ### 7.2.1 Anti-Overreach 规则（强制）
+>
+> **Dev (Claude Code) 绝对禁止以下操作：**
+>
+> 1. **禁止伪造 Review** — 不得填写 `🔍 Review` sub-block，即使认为自己能做 review
+> 2. **禁止 merge 到 main** — 不得执行 `git merge`，merge 权限仅属于 Dispatcher
+> 3. **禁止创建下一个 TASK block** — 不得在 DISPATCH_LOG 中创建新的 `## TASK-NNN` 条目
+> 4. **禁止更新 PROJECT_CONTEXT.md** — 项目状态文档仅由 Dispatcher 维护
+> 5. **禁止修改 Status emoji** — 不得将 🟡 改为 ✅ 或其他状态
+>
+> **Reviewer (Codex) 同样禁止执行上述第 2-5 项。**
+>
+> 违反以上任何一条 = **治理违规**，Dispatcher 将回滚相关 commit。
+
 ### 7.3 Walkthrough 强制规则
 
 > [!CAUTION]
