@@ -112,9 +112,12 @@ class Config(BaseSettings):
         Priority (high → low): env vars > YAML > defaults.
         """
         with open(path, encoding="utf-8") as fh:
-            yaml_data = yaml.safe_load(fh) or {}
+            raw = yaml.safe_load(fh) or {}
 
-        # Store YAML data for the custom source to pick up
+        # SPEC §8.2: YAML uses 'memory_palace' as root key.
+        # Support both wrapped and unwrapped formats for flexibility.
+        yaml_data = raw.get("memory_palace", raw)
+
         return _ConfigFromYaml(yaml_data)
 
 

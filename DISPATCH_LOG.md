@@ -190,6 +190,13 @@ _N/A — 纯文档重设计，无需 review_
     - Round 2 的 `models/audit.py` 将复用 AuditEntry/AuditAction——届时需从 `foundation/audit_log.py` refactor 到 models 层
 
 ### 🔍 Review
-_待 Codex 填写_
+- **Agent**: Codex
+- **Reviewed**: 2026-04-07T16:44
+- **Verdict**: ⚠️ CHANGES_REQUESTED
+- **Findings**:
+  1. [severity: HIGH] `Config.from_yaml()` 与 SPEC §8.2 的 YAML 形状不兼容。SPEC 示例要求顶层使用 `memory_palace:` 根键，但当前实现将整个 YAML dict 直接传入 `_ConfigFromYaml()`；加载该合法配置时会因额外字段 `memory_palace` 触发 `ValidationError`，导致文档示例和公开契约无法工作。
+  2. [severity: MEDIUM] `tests/test_foundation/test_config.py` 只覆盖了“顶层直接是 llm/storage/... ”的 YAML 形状，没有锁定 SPEC §8.2 的 `memory_palace:` 包裹格式，因此上面的契约偏差未被测试捕获。
+- **Test Verification**: `uv run pytest tests/ -q` → 29 passed, 106 skipped
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/` → 非 clean；`tests/test_foundation/test_audit_log.py`、`tests/test_foundation/test_config.py`、`tests/test_foundation/test_llm.py` 仅移除 `pytest.skip()` 并填充测试体；`tests/conftest.py`、`tests/test_service/test_curator.py`、`tests/test_service/test_memory_service.py` 仅有 ruff auto-format（行折叠/空行），skip 与断言语义未变
 
 ---

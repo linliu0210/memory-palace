@@ -66,7 +66,12 @@ class TestConfigLoading:
     def test_loads_from_yaml_file(self, tmp_path):
         """Config.from_yaml(path) should parse and apply settings."""
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text("llm:\n  provider: anthropic\n  model_id: claude-3\n")
+        yaml_file.write_text(
+            "memory_palace:\n"
+            "  llm:\n"
+            "    provider: anthropic\n"
+            "    model_id: claude-3\n"
+        )
         cfg = Config.from_yaml(yaml_file)
         assert cfg.llm.provider == "anthropic"
         assert cfg.llm.model_id == "claude-3"
@@ -74,7 +79,11 @@ class TestConfigLoading:
     def test_env_vars_override_yaml(self, monkeypatch, tmp_path):
         """Env vars take precedence over YAML values."""
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text("llm:\n  provider: anthropic\n")
+        yaml_file.write_text(
+            "memory_palace:\n"
+            "  llm:\n"
+            "    provider: anthropic\n"
+        )
         monkeypatch.setenv("MP_LLM__PROVIDER", "deepseek")
         cfg = Config.from_yaml(yaml_file)
         assert cfg.llm.provider == "deepseek"
