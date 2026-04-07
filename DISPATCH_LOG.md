@@ -168,7 +168,26 @@ _N/A — 纯文档重设计，无需 review_
 - **Parallel Protected**: 无
 
 ### 🔨 Dev
-_待 Claude Code 填写_
+- **Agent**: Claude Code (Opus 4.6)
+- **Completed**: 2026-04-07T14:45
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 1 Foundation 三组件——AuditLog (append-only JSONL)、LLMProvider Protocol + ModelConfig + get_api_key、Config (Pydantic Settings + YAML)。严格遵循 TDD Red-Green-Refactor，每个组件独立 commit。
+  - **文件清单**:
+    - `MOD` src/memory_palace/foundation/audit_log.py — AuditAction(StrEnum) + AuditEntry(BaseModel) + AuditLog(append/read with JSONL)
+    - `MOD` src/memory_palace/foundation/llm.py — @runtime_checkable LLMProvider Protocol + ModelConfig + ENV_KEY_MAP + get_api_key()
+    - `MOD` src/memory_palace/config.py — Config(BaseSettings) with 7 nested sub-models, MP_ env prefix, from_yaml() with custom PydanticBaseSettingsSource
+    - `MOD` src/memory_palace/foundation/__init__.py — 导出所有公共 API
+    - `MOD` tests/test_foundation/test_audit_log.py — 移除 skip，填充 8 个测试体
+    - `MOD` tests/test_foundation/test_config.py — 移除 skip，填充 11 个测试体，key resolution 委托 get_api_key
+    - `MOD` tests/test_foundation/test_llm.py — 移除 skip，填充 10 个测试体，内联 _MockLLM 绕过 conftest 不可 import 问题
+  - **关键设计决策**:
+    1. `from_yaml()` 使用 `settings_customise_sources` 注入 `_YamlSettingsSource`，确保 env > YAML > defaults 优先级（直接传 kwargs 会让 YAML 覆盖 env vars）
+    2. `AuditAction` 用 `StrEnum` 替代 `(str, Enum)` 双继承，满足 ruff UP042
+    3. test_llm.py 中内联 `_MockLLM` dataclass 而非 import conftest（pytest 的 conftest 不可作为 module 导入）
+  - **Tests**: 0→29 passed, 135→106 skipped, 0 failed
+  - **已知风险**:
+    - `tests/conftest.py` 存在 ruff I001 (import sort) 预存问题，因 immutable 规则无法修复
+    - Round 2 的 `models/audit.py` 将复用 AuditEntry/AuditAction——届时需从 `foundation/audit_log.py` refactor 到 models 层
 
 ### 🔍 Review
 _待 Codex 填写_
