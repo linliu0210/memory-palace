@@ -181,7 +181,7 @@ class RecallStore:
                 SELECT m.*, f.rank
                 FROM memories_fts f
                 JOIN memories m ON m.rowid = f.rowid
-                WHERE memories_fts MATCH ? AND m.room = ?
+                WHERE memories_fts MATCH ? AND m.room = ? AND m.status = 'active'
                 ORDER BY f.rank
                 LIMIT ?
             """
@@ -191,7 +191,7 @@ class RecallStore:
                 SELECT m.*, f.rank
                 FROM memories_fts f
                 JOIN memories m ON m.rowid = f.rowid
-                WHERE memories_fts MATCH ?
+                WHERE memories_fts MATCH ? AND m.status = 'active'
                 ORDER BY f.rank
                 LIMIT ?
             """
@@ -228,7 +228,7 @@ class RecallStore:
             List of MemoryItems ordered by created_at descending.
         """
         rows = self._conn.execute(
-            "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM memories WHERE status = 'active' ORDER BY created_at DESC LIMIT ?",
             (n,),
         ).fetchall()
         return [_row_to_memory_item(row) for row in rows]
@@ -239,7 +239,9 @@ class RecallStore:
         Returns:
             Count of all stored memories.
         """
-        row = self._conn.execute("SELECT COUNT(*) as cnt FROM memories").fetchone()
+        row = self._conn.execute(
+            "SELECT COUNT(*) as cnt FROM memories WHERE status = 'active'"
+        ).fetchone()
         return row["cnt"]
 
     def update_status(self, memory_id: str, status: MemoryStatus) -> None:

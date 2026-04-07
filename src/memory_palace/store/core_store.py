@@ -91,9 +91,14 @@ class CoreStore:
             block: Block name.
             memory_id: ID of the MemoryItem to remove.
         """
+        block_file = self._core_dir / f"{block}.json"
+        if not block_file.exists():
+            return  # no-op: block doesn't exist
+
         items = self.load(block)
         remaining = [item for item in items if item.id != memory_id]
-        self.save(block, remaining)
+        if len(remaining) < len(items):  # only write if something was actually deleted
+            self.save(block, remaining)
 
     def list_blocks(self) -> list[str]:
         """List all existing block names.
