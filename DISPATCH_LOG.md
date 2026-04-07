@@ -156,15 +156,16 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-005: [Round 1] Foundation — AuditLog + Config + LLMProvider 🟡
+## TASK-005: [Round 1] Foundation — AuditLog + Config + LLMProvider ✅
 
 ### 📋 Dispatch
 - **Round**: 1
 - **Branch**: `feat/foundation-round1`
 - **Priority**: P0
 - **Dispatched**: 2026-04-07T14:14
-- **Status**: 🟡 IN_PROGRESS
+- **Status**: ✅ DONE
 - **Base**: main @ `7ee32f2`
+- **Merged**: main @ `daa06fb`
 - **Parallel Protected**: 无
 
 ### 🔨 Dev
@@ -203,5 +204,24 @@ _N/A — 纯文档重设计，无需 review_
   2. [resolved] `tests/test_foundation/test_config.py` 已将 YAML fixture 更新为 SPEC §8.2 的 `memory_palace:` 根键格式，补上了此前缺失的回归覆盖。
 - **Test Verification**: `uv run pytest tests/ -q` → 29 passed, 106 skipped
 - **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/` → 非 clean；`tests/test_foundation/test_audit_log.py`、`tests/test_foundation/test_config.py`、`tests/test_foundation/test_llm.py` 仅移除 `pytest.skip()` 并填充测试体；`tests/conftest.py`、`tests/test_service/test_curator.py`、`tests/test_service/test_memory_service.py` 仅有 ruff auto-format（行折叠/空行），skip 与断言语义未变
+
+---
+
+## TASK-006: [Round 2] Models — MemoryItem + AuditEntry + CuratorReport 🟡
+
+### 📋 Dispatch
+- **Round**: 2
+- **Branch**: `feat/models-round2`
+- **Priority**: P0
+- **Dispatched**: 2026-04-07T20:25
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ `daa06fb`
+- **Parallel Protected**: 无
+
+### 🔨 Dev
+_(等待 Dev Agent 填写)_
+
+### 🔍 Review
+_(等待 Review Agent 填写)_
 
 ---
