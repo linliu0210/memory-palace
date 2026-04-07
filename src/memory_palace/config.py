@@ -75,9 +75,7 @@ class _YamlSettingsSource(PydanticBaseSettingsSource):
         super().__init__(settings_cls)
         self._yaml_data = yaml_data
 
-    def get_field_value(
-        self, field: Any, field_name: str
-    ) -> tuple[Any, str, bool]:
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         val = self._yaml_data.get(field_name)
         return val, field_name, val is not None
 

@@ -8,9 +8,9 @@ LLMProvider is a Protocol (structural typing). Any object with
 `async def complete(prompt, response_format) -> str` satisfies it.
 """
 
-import pytest
-
 from dataclasses import dataclass, field
+
+import pytest
 
 from memory_palace.foundation.llm import LLMProvider, ModelConfig, get_api_key
 
@@ -23,9 +23,7 @@ class _MockLLM:
     _call_count: int = field(default=0, init=False)
     _prompts_received: list[str] = field(default_factory=list, init=False)
 
-    async def complete(
-        self, prompt: str, response_format: type | None = None
-    ) -> str:
+    async def complete(self, prompt: str, response_format: type | None = None) -> str:
         self._prompts_received.append(prompt)
         response = self.responses[self._call_count % len(self.responses)]
         self._call_count += 1

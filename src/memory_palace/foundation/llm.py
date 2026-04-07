@@ -21,9 +21,7 @@ class LLMProvider(Protocol):
     protocol — no inheritance required.
     """
 
-    async def complete(
-        self, prompt: str, response_format: type | None = None
-    ) -> str: ...
+    async def complete(self, prompt: str, response_format: type | None = None) -> str: ...
 
 
 class ModelConfig(BaseModel):

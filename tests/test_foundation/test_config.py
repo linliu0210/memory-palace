@@ -9,8 +9,6 @@ Provider API keys are resolved from environment variables
 following the pi-mono pattern.
 """
 
-import pytest
-
 from memory_palace.config import Config
 from memory_palace.foundation.llm import get_api_key
 
@@ -31,9 +29,9 @@ class TestConfigDefaults:
         assert cfg.llm.model_id == "gpt-4o-mini"
         assert cfg.storage.base_dir == "./data"
         assert cfg.core.max_bytes == 2048
-        assert abs(
-            cfg.scoring.recency + cfg.scoring.importance + cfg.scoring.relevance - 1.0
-        ) < 0.01
+        assert (
+            abs(cfg.scoring.recency + cfg.scoring.importance + cfg.scoring.relevance - 1.0) < 0.01
+        )
 
     def test_default_rooms_include_five_standard(self):
         """Default rooms: general, preferences, projects, people, skills."""
@@ -68,9 +66,7 @@ class TestConfigLoading:
     def test_loads_from_yaml_file(self, tmp_path):
         """Config.from_yaml(path) should parse and apply settings."""
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text(
-            "llm:\n  provider: anthropic\n  model_id: claude-3\n"
-        )
+        yaml_file.write_text("llm:\n  provider: anthropic\n  model_id: claude-3\n")
         cfg = Config.from_yaml(yaml_file)
         assert cfg.llm.provider == "anthropic"
         assert cfg.llm.model_id == "claude-3"

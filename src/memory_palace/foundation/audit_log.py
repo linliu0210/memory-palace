@@ -7,13 +7,13 @@ Ref: SPEC v2.0 §4.1 S-1, §2.2 AuditEntry
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 
-class AuditAction(str, Enum):
+class AuditAction(StrEnum):
     """Possible audit actions across the Memory Palace lifecycle."""
 
     CREATE = "create"

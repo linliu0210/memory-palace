@@ -67,15 +67,11 @@ class TestAuditLogAppend:
     def test_file_is_append_only_after_restart(self, tmp_data_dir):
         """Re-opening the log and appending must not overwrite existing entries."""
         log1 = AuditLog(tmp_data_dir)
-        log1.append(AuditEntry(
-            action=AuditAction.CREATE, memory_id="mem-001", actor="user"
-        ))
+        log1.append(AuditEntry(action=AuditAction.CREATE, memory_id="mem-001", actor="user"))
 
         # "restart" → new AuditLog instance
         log2 = AuditLog(tmp_data_dir)
-        log2.append(AuditEntry(
-            action=AuditAction.ACCESS, memory_id="mem-002", actor="system"
-        ))
+        log2.append(AuditEntry(action=AuditAction.ACCESS, memory_id="mem-002", actor="system"))
 
         lines = (tmp_data_dir / "audit.jsonl").read_text().strip().split("\n")
         assert len(lines) == 2
@@ -87,12 +83,8 @@ class TestAuditLogRead:
     def test_read_returns_all_entries(self, tmp_data_dir):
         """read() with no filter should return all appended entries."""
         log = AuditLog(tmp_data_dir)
-        log.append(AuditEntry(
-            action=AuditAction.CREATE, memory_id="mem-001", actor="user"
-        ))
-        log.append(AuditEntry(
-            action=AuditAction.UPDATE, memory_id="mem-002", actor="curator"
-        ))
+        log.append(AuditEntry(action=AuditAction.CREATE, memory_id="mem-001", actor="user"))
+        log.append(AuditEntry(action=AuditAction.UPDATE, memory_id="mem-002", actor="curator"))
 
         entries = log.read()
         assert len(entries) == 2
@@ -100,15 +92,9 @@ class TestAuditLogRead:
     def test_read_filters_by_memory_id(self, tmp_data_dir):
         """read(memory_id=X) should return only entries for memory X."""
         log = AuditLog(tmp_data_dir)
-        log.append(AuditEntry(
-            action=AuditAction.CREATE, memory_id="mem-001", actor="user"
-        ))
-        log.append(AuditEntry(
-            action=AuditAction.UPDATE, memory_id="mem-002", actor="curator"
-        ))
-        log.append(AuditEntry(
-            action=AuditAction.ACCESS, memory_id="mem-001", actor="system"
-        ))
+        log.append(AuditEntry(action=AuditAction.CREATE, memory_id="mem-001", actor="user"))
+        log.append(AuditEntry(action=AuditAction.UPDATE, memory_id="mem-002", actor="curator"))
+        log.append(AuditEntry(action=AuditAction.ACCESS, memory_id="mem-001", actor="system"))
 
         entries = log.read(memory_id="mem-001")
         assert len(entries) == 2
@@ -128,18 +114,19 @@ class TestAuditLogRead:
         t2 = datetime(2024, 1, 1, 12, 0, 0)
         t3 = datetime(2024, 1, 1, 11, 0, 0)
 
-        log.append(AuditEntry(
-            timestamp=t1, action=AuditAction.CREATE,
-            memory_id="mem-001", actor="user"
-        ))
-        log.append(AuditEntry(
-            timestamp=t2, action=AuditAction.UPDATE,
-            memory_id="mem-001", actor="curator"
-        ))
-        log.append(AuditEntry(
-            timestamp=t3, action=AuditAction.ACCESS,
-            memory_id="mem-001", actor="system"
-        ))
+        log.append(
+            AuditEntry(timestamp=t1, action=AuditAction.CREATE, memory_id="mem-001", actor="user")
+        )
+        log.append(
+            AuditEntry(
+                timestamp=t2, action=AuditAction.UPDATE, memory_id="mem-001", actor="curator"
+            )
+        )
+        log.append(
+            AuditEntry(
+                timestamp=t3, action=AuditAction.ACCESS, memory_id="mem-001", actor="system"
+            )
+        )
 
         entries = log.read()
         assert entries[0].timestamp == t1
