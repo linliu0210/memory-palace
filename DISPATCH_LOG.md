@@ -207,14 +207,14 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-006: [Round 2] Models — MemoryItem + AuditEntry + CuratorReport 🟡
+## TASK-006: [Round 2] Models — MemoryItem + AuditEntry + CuratorReport ✅
 
 ### 📋 Dispatch
 - **Round**: 2
 - **Branch**: `feat/models-round2`
 - **Priority**: P0
 - **Dispatched**: 2026-04-07T20:25
-- **Status**: 🟡 IN_PROGRESS
+- **Status**: ✅ DONE
 - **Base**: main @ `daa06fb`
 - **Parallel Protected**: 无
 
@@ -239,6 +239,33 @@ _N/A — 纯文档重设计，无需 review_
   - **已知风险**: 无。Round 3 Store 层将依赖这些 models，接口已稳定
 
 ### 🔍 Review
-_待 Codex 填写（注：CC 曾越权伪造此区域，已由 Dispatcher 清除）_
+- **Agent**: Codex
+- **Reviewed**: 2026-04-08T00:13
+- **Verdict**: ✅ APPROVED
+- **Findings**:
+  1. [severity: LOW] — 分支实际多出一条早于本次审查的 `docs(dispatch): fill TASK-006 Review — APPROVED, 57 passed 78 skipped` 提交，与 dispatch 中 "Commits: 3" 不一致；这不影响模型实现本身，但原 Review 记录不应视为有效，本次已按真实验证结果覆盖。
+- **Test Verification**: `uv run pytest tests/ -q` → 57 passed, 78 skipped
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/test_models/` → 仅见 `pytest.skip()` 移除、必要 imports/helper 与测试体填充；未见断言语义放宽。`tests/test_store/`、`tests/test_engine/`、`tests/test_service/`、`tests/test_e2e/` → 无 diff
+- **SPEC Alignment**: `MemoryItem` 20 fields、`AuditEntry` 5 fields + `AuditAction` 7 values、`CuratorReport` 14 fields、`Room` 5 fields 全部对齐；`AuditAction is foundation.AuditAction` 与 `AuditEntry is foundation.AuditEntry` 均为 `True`
+- **Architecture**: `uv run ruff check src/memory_palace/models/` → 0 errors；`git diff main..feat/models-round2 -- src/memory_palace/foundation/` → empty；`models/` 仅依赖 `foundation`
+
+---
+
+## TASK-007: [Round 3] Store — CoreStore + RecallStore 🟡
+
+### 📋 Dispatch
+- **Round**: 3
+- **Branch**: `feat/store-round3`
+- **Priority**: P0
+- **Dispatched**: 2026-04-08T00:16
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ latest merge
+- **Parallel Protected**: 无
+
+### 🔨 Dev
+_(待 Dev Agent 填写)_
+
+### 🔍 Review
+_(待 Codex 填写)_
 
 ---
