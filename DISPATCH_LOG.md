@@ -263,7 +263,23 @@ _N/A — 纯文档重设计，无需 review_
 - **Parallel Protected**: 无
 
 ### 🔨 Dev
-_(待 Dev Agent 填写)_
+- **Agent**: Claude Code (Opus 4.6)
+- **Completed**: 2026-04-08T01:15
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 3 全部存储层——CoreStore (JSON 平文件 + 原子写入 + 2KB 预算) + RecallStore (SQLite + FTS5 + CJK 预分词)。22 个冻结测试全绿。
+  - **文件清单**:
+    - `MOD` src/memory_palace/store/core_store.py — CoreStore: save/load/delete/list_blocks/budget_check/get_all_text，原子写入 (tmp+os.rename)
+    - `MOD` src/memory_palace/store/recall_store.py — RecallStore: insert/search/get/get_recent/count/update_status/touch，FTS5 独立表 + CJK 预分词
+    - `MOD` src/memory_palace/store/base.py — 注释说明 v0.1 不抽取 Protocol（两 store 接口差异大）
+    - `MOD` src/memory_palace/store/__init__.py — 导出 CoreStore, RecallStore
+    - `MOD` tests/test_store/test_core_store.py — 移除 9 个 pytest.skip() + 填充测试体
+    - `MOD` tests/test_store/test_recall_store.py — 移除 13 个 pytest.skip() + 填充测试体
+  - **关键设计决策**:
+    1. FTS5 CJK 预分词：unicode61 将连续中文字符合并为单个 token，导致子串搜索失败。解决方案是 `_tokenize_cjk()` 在 CJK 字符间插入空格，确保逐字匹配。FTS5 表采用独立模式（无 content sync），手动管理 rowid 对齐。
+    2. CoreStore 原子写入使用 `tempfile.mkstemp + os.replace`，异常时清理临时文件，防止断电数据损坏。
+    3. `save()` 方法先序列化为 JSON 再写文件；`load()` 使用 `model_validate()` 从 dict 反序列化（非 `model_validate_json()`，因后者只接受 str）。
+  - **Tests**: 57→79 passed, 78→56 skipped, 0 failed
+  - **已知风险**: CJK 搜索是逐字匹配（无分词器），长句可能产生假阳性；v0.2 引入向量检索后可改善
 
 ### 🔍 Review
 _(待 Codex 填写)_
