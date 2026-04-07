@@ -250,3 +250,22 @@ _N/A — 纯文档重设计，无需 review_
 - **Architecture**: `models/` depends only on `foundation/`; `git diff main..feat/models-round2 -- src/memory_palace/foundation/` → empty (Round 1 code untouched). `ruff check src/memory_palace/models/` → 0 errors.
 
 ---
+
+## TASK-007: [Round 3] Store — CoreStore + RecallStore 🟡
+
+### 📋 Dispatch
+- **Round**: 3
+- **Branch**: `feat/store-round3`
+- **Priority**: P0
+- **Dispatched**: 2026-04-07T21:09
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ `e752b31`
+- **Parallel Protected**: 无
+
+### 🔨 Dev
+_待 Claude Code 填写_
+
+### 🔍 Review
+_待 Codex 填写_
+
+---
