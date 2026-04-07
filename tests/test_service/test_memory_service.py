@@ -26,9 +26,7 @@ class TestMemoryServiceSave:
         pytest.skip("RED: MemoryService not implemented")
 
     @pytest.mark.asyncio
-    async def test_save_batch_extracts_facts_and_saves(
-        self, tmp_data_dir, mock_llm_extract
-    ):
+    async def test_save_batch_extracts_facts_and_saves(self, tmp_data_dir, mock_llm_extract):
         """save_batch() calls FactExtractor then saves each fact."""
         pytest.skip("RED: MemoryService not implemented")
 

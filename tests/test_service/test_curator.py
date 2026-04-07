@@ -15,9 +15,7 @@ class TestCuratorRun:
     """CuratorService.run() full cycle."""
 
     @pytest.mark.asyncio
-    async def test_run_extracts_facts_from_recent(
-        self, tmp_data_dir, mock_llm_extract
-    ):
+    async def test_run_extracts_facts_from_recent(self, tmp_data_dir, mock_llm_extract):
         """run() scans recent items and extracts facts."""
         pytest.skip("RED: CuratorService not implemented")
 
@@ -50,9 +48,7 @@ class TestCuratorRun:
         pytest.skip("RED: CuratorService not implemented")
 
     @pytest.mark.asyncio
-    async def test_run_skips_noop(
-        self, tmp_data_dir, mock_llm_extract, mock_llm_reconcile_noop
-    ):
+    async def test_run_skips_noop(self, tmp_data_dir, mock_llm_extract, mock_llm_reconcile_noop):
         """NOOP decision → no store mutation."""
         pytest.skip("RED: CuratorService not implemented")
 
