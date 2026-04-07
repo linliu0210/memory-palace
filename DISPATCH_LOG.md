@@ -188,6 +188,11 @@ _N/A — 纯文档重设计，无需 review_
   - **已知风险**:
     - `tests/conftest.py` 存在 ruff I001 (import sort) 预存问题，因 immutable 规则无法修复
     - Round 2 的 `models/audit.py` 将复用 AuditEntry/AuditAction——届时需从 `foundation/audit_log.py` refactor 到 models 层
+  - **Fix Round (Codex Review)**:
+    - Finding 1 [HIGH]: `from_yaml()` 添加 `memory_palace:` 根键解包，兼容有/无根键两种格式
+    - Finding 2 [MEDIUM]: 更新 2 个 YAML 测试 fixture 使用 SPEC §8.2 根键格式
+    - Commit: `fix(config): unwrap memory_palace root key in from_yaml (SPEC §8.2)`
+    - Tests: 29 passed, 106 skipped (unchanged)
 
 ### 🔍 Review
 - **Agent**: Codex
