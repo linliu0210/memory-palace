@@ -460,14 +460,14 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-010: [Round 6] E2E — Full Lifecycle + Core Budget ✅
+## TASK-010: [Round 6] E2E — Full Lifecycle + Core Budget 🟡
 
 ### 📋 Dispatch
 - **Round**: 6 (Final)
 - **Branch**: `feat/e2e-round6`
 - **Priority**: P0
 - **Dispatched**: 2026-04-08T16:47
-- **Status**: ✅ DONE
+- **Status**: 🟡 IN_PROGRESS
 - **Base**: main @ latest merge
 - **Parallel Protected**: 无
 - **Carry-over**: `get_core_context()` 仍拼接 SUPERSEDED/PRUNED Core items — E2E 测试需确认是否需要过滤仅 active
@@ -514,5 +514,25 @@ _N/A — 纯文档重设计，无需 review_
   1. 为 `get_core_context()` 增加 active-only 过滤，并补充对应单测 + E2E 断言。
   2. 将 RecallStore 的 superseded 字段写入下沉为公开 Store API，移除 Service 层 `_conn` 直连。
   3. 新增 2 组 E2E sad path：LLM 异常恢复、Reconcile 非法 `target_id` 回退策略。
+
+---
+
+## TASK-011: [Round 7] Integration — LLM Provider + CLI + Config 🟡
+
+### 📋 Dispatch
+- **Round**: 7 (Integration)
+- **Branch**: `feat/integration-round7`
+- **Priority**: P0
+- **Dispatched**: 2026-04-09T07:02
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ v0.1
+- **Parallel Protected**: 无
+- **目标**: 让 Memory Palace v0.1 真正可用——真实 LLM Provider + Typer CLI + 默认配置
+
+### 🔨 Dev
+_(待 Dev Agent 填写)_
+
+### 🔍 Review
+_(待 Codex 填写)_
 
 ---
