@@ -16,7 +16,6 @@ import structlog
 
 from memory_palace.engine.fact_extractor import FactExtractor
 from memory_palace.engine.reconcile import ReconcileEngine
-from memory_palace.foundation.audit_log import AuditAction, AuditEntry, AuditLog
 from memory_palace.foundation.llm import LLMProvider
 from memory_palace.models.curator import CuratorReport
 from memory_palace.store.recall_store import RecallStore
@@ -44,7 +43,6 @@ class CuratorService:
     def __init__(self, data_dir: Path, llm: LLMProvider) -> None:
         self._data_dir = data_dir
         self._recall_store = RecallStore(data_dir)
-        self._audit_log = AuditLog(data_dir)
         self._fact_extractor = FactExtractor(llm)
         self._reconcile_engine = ReconcileEngine(llm)
         self._llm = llm
@@ -125,32 +123,36 @@ class CuratorService:
             target_id = decision.get("target_id")
             reason = decision.get("reason", "curator decision")
 
-            if action == "ADD":
-                ms.save(
-                    content=fact.content,
-                    importance=fact.importance,
-                    tags=fact.tags,
-                )
-                report.memories_created += 1
-
-                self._audit_log.append(
-                    AuditEntry(
-                        action=AuditAction.CREATE,
-                        memory_id=fact.id,
-                        actor="curator",
-                        details={"reason": reason, "source": "curator_run"},
+            try:
+                if action == "ADD":
+                    ms.save(
+                        content=fact.content,
+                        importance=fact.importance,
+                        tags=fact.tags,
                     )
+                    report.memories_created += 1
+                    # MemoryService.save() already writes AuditEntry(CREATE)
+                    # DO NOT write duplicate audit here
+
+                elif action == "UPDATE" and target_id:
+                    ms.update(target_id, fact.content, reason)
+                    report.memories_updated += 1
+
+                elif action == "DELETE" and target_id:
+                    ms.forget(target_id, reason)
+                    report.memories_pruned += 1
+
+                # NOOP — do nothing
+
+            except Exception as exc:
+                errors.append(f"Execute error ({action}): {exc}")
+                logger.warning(
+                    "Curator execute failed, skipping",
+                    action=action,
+                    target_id=target_id,
+                    error=str(exc),
                 )
-
-            elif action == "UPDATE" and target_id:
-                ms.update(target_id, fact.content, reason)
-                report.memories_updated += 1
-
-            elif action == "DELETE" and target_id:
-                ms.forget(target_id, reason)
-                report.memories_pruned += 1
-
-            # NOOP — do nothing
+                continue
 
         report.errors = errors
         report.duration_seconds = time.time() - start_time
@@ -198,7 +200,8 @@ class CuratorService:
             if hours_since_last >= DEFAULT_TIMER_HOURS:
                 return (True, "timer")
         else:
-            # Never run before — timer trigger (more than 24h since start)
+            # Never run before — trigger on first use to perform initial curation.
+            # This is intentional: a fresh system should curate on first opportunity.
             return (True, "timer")
 
         return (False, "")

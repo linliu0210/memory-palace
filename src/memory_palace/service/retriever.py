@@ -57,9 +57,14 @@ class Retriever:
         Returns:
             Ranked list of MemoryItems, highest score first.
         """
-        # Empty query fallback
+        # Empty query fallback — still apply room/min_importance filters
         if not query or not query.strip():
-            items = self._recall_store.get_recent(top_k)
+            items = self._recall_store.get_recent(top_k * 3)  # over-fetch for filtering
+            if room is not None:
+                items = [i for i in items if i.room == room]
+            if min_importance > 0.0:
+                items = [i for i in items if i.importance >= min_importance]
+            items = items[:top_k]
             for item in items:
                 self._recall_store.touch(item.id)
             return items

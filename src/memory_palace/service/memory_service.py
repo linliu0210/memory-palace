@@ -173,8 +173,18 @@ class MemoryService:
             min_importance=min_importance,
         )
 
+    def _find_in_core(self, memory_id: str) -> MemoryItem | None:
+        """Search all Core blocks for a memory by ID."""
+        for block in self._core_store.list_blocks():
+            for item in self._core_store.load(block):
+                if item.id == memory_id:
+                    return item
+        return None
+
     def update(self, memory_id: str, new_content: str, reason: str) -> MemoryItem:
         """Update a memory: supersede old, create new version.
+
+        Searches both Recall and Core tiers for the old item.
 
         Args:
             memory_id: ID of the memory to update.
@@ -185,10 +195,14 @@ class MemoryService:
             The new MemoryItem version.
 
         Raises:
-            ValueError: If the memory_id is not found.
+            ValueError: If the memory_id is not found in either tier.
         """
-        # Find the old item
+        # Find the old item — search Recall first, fallback to Core
         old_item = self._recall_store.get(memory_id)
+        old_tier = MemoryTier.RECALL
+        if old_item is None:
+            old_item = self._find_in_core(memory_id)
+            old_tier = MemoryTier.CORE
         if old_item is None:
             raise ValueError(f"Memory {memory_id} not found")
 
@@ -206,7 +220,20 @@ class MemoryService:
         )
 
         # Mark old as superseded
-        self._recall_store.update_status(memory_id, MemoryStatus.SUPERSEDED)
+        if old_tier == MemoryTier.RECALL:
+            self._recall_store.update_status(memory_id, MemoryStatus.SUPERSEDED)
+            # Persist superseded_by (Store API frozen, direct SQL — tech debt for Round 6+)
+            self._recall_store._conn.execute(
+                "UPDATE memories SET superseded_by = ? WHERE id = ?",
+                (new_item.id, memory_id),
+            )
+            self._recall_store._conn.commit()
+        elif old_tier == MemoryTier.CORE:
+            # Remove old item from Core block
+            block = old_item.room
+            items = self._core_store.load(block)
+            items = [i for i in items if i.id != memory_id]
+            self._core_store.save(block, items)
 
         # Save new item
         if new_item.tier == MemoryTier.CORE:
@@ -249,20 +276,29 @@ class MemoryService:
     def forget(self, memory_id: str, reason: str) -> bool:
         """Soft delete: mark memory as pruned.
 
-        Does NOT physically delete — just sets status to PRUNED.
+        Searches both Recall and Core tiers. For Recall items, sets
+        status to PRUNED. For Core items, removes from the block.
 
         Args:
             memory_id: ID of the memory to forget.
             reason: Reason for forgetting.
 
         Returns:
-            True if the memory was found and pruned.
+            True if the memory was found and pruned/removed.
         """
         item = self._recall_store.get(memory_id)
-        if item is None:
-            return False
-
-        self._recall_store.update_status(memory_id, MemoryStatus.PRUNED)
+        if item is not None:
+            self._recall_store.update_status(memory_id, MemoryStatus.PRUNED)
+        else:
+            # Try Core
+            core_item = self._find_in_core(memory_id)
+            if core_item is None:
+                return False
+            # Remove from Core block
+            block = core_item.room
+            items = self._core_store.load(block)
+            items = [i for i in items if i.id != memory_id]
+            self._core_store.save(block, items)
 
         self._audit_log.append(
             AuditEntry(
