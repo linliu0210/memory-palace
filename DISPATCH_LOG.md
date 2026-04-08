@@ -357,7 +357,24 @@ _N/A — 纯文档重设计，无需 review_
 - **Carry-over**: `rank()` 接口与 SPEC §4.3 不一致，Round 5 需在 Service 层适配或重构
 
 ### 🔨 Dev
-_(待 Dev Agent 填写)_
+- **Agent**: Claude Code (Opus 4.6 Thinking)
+- **Completed**: 2026-04-08T10:51
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 5 全部 Service 层——MemoryService (CRUD facade: importance 路由 + 版本更新 + 软删除 + 批量提取)、Retriever (FTS5 + 三因子评分 + 空查询 fallback + touch)、CuratorService (Gather→Extract→Reconcile→Execute→Report 循环 + 触发逻辑)。29 个冻结测试全绿。
+  - **文件清单**:
+    - `MOD` src/memory_palace/service/memory_service.py — MemoryService class: save (importance≥0.7→Core/else→Recall), save_batch (async via FactExtractor), search (委托 Retriever), update (supersede→new version), forget (PRUNED), get_core_context, stats
+    - `MOD` src/memory_palace/service/retriever.py — Retriever class: FTS5 search→scoring.rank() 适配(并行数组 API)→top_k 截断→touch access_count; 空 query fallback 到 get_recent(); 支持 room filter + min_importance filter
+    - `MOD` src/memory_palace/service/curator.py — CuratorService class: run() 异步循环(gather→extract→reconcile→execute)→CuratorReport; should_trigger() 支持 session_count/timer/cooldown 三重判断; 使用 lazy import 避免 MemoryService 循环依赖
+    - `MOD` src/memory_palace/service/__init__.py — 导出 MemoryService, Retriever, CuratorService
+    - `MOD` tests/test_service/test_memory_service.py — 移除 14 个 pytest.skip() + 填充测试体
+    - `MOD` tests/test_service/test_retriever.py — 移除 4 个 pytest.skip() + 填充测试体
+    - `MOD` tests/test_service/test_curator.py — 移除 11 个 pytest.skip() + 填充测试体
+  - **关键设计决策**:
+    1. **Retriever 适配 rank() 并行数组 API**：Round 4 的 rank() 要求 `(items, recency_hours, importances, relevances)` 并行数组，Retriever 负责从 RecallStore.search() 返回的 `list[dict]` 中提取这四个数组，包括 recency_hours 的 datetime 计算和 BM25 normalize，将适配逻辑封装在 Retriever 内部
+    2. **CuratorService 使用 lazy import 避免循环依赖**：CuratorService 需要 MemoryService (执行 ADD/UPDATE/DELETE 决策)，但 MemoryService 不依赖 CuratorService。通过 `_get_memory_service()` 延迟导入解决
+    3. **CuratorService 使用单一 LLM 实例**：FactExtractor 和 ReconcileEngine 共享同一个 LLM provider，测试中使用 combined MockLLM（按序返回 extract→reconcile 响应）
+  - **Tests**: 104→133 passed, 31→2 skipped, 0 failed
+  - **已知风险**: rank() 接口仍使用并行数组 API（Round 4 遗留），未来可考虑重构为更优雅的接口
 
 ### 🔍 Review
 _(待 Codex 填写)_
