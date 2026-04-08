@@ -22,6 +22,11 @@ def recency_score(hours_since_access: float, decay_rate: float = 0.01) -> float:
     Returns:
         Score in (0, 1], where 1.0 = just accessed.
     """
+    # Guard: reject non-finite values; clamp negative hours to zero
+    if not math.isfinite(hours_since_access):
+        return 0.0
+    if hours_since_access < 0:
+        hours_since_access = 0.0
     return math.exp(-decay_rate * hours_since_access)
 
 

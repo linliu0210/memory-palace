@@ -34,6 +34,8 @@ Decide ONE action:
 
 Return JSON: {{"action": "ADD|UPDATE|DELETE|NOOP", "target_id": "...|null", "reason": "..."}}"""
 
+VALID_ACTIONS = {"ADD", "UPDATE", "DELETE", "NOOP"}
+
 
 class ReconcileEngine:
     """Reconcile a new fact against existing memories using an LLM.
@@ -81,12 +83,41 @@ class ReconcileEngine:
             logger.warning("Malformed LLM response in ReconcileEngine", raw=raw[:200])
             raise ValueError(f"Failed to parse reconcile response: {exc}") from exc
 
-        # Normalize target_id: JSON null → Python None
-        if result.get("target_id") == "null":
-            result["target_id"] = None
+        # ── Post-parse schema validation ──────────────────────────
+        if not isinstance(result, dict):
+            raise ValueError(
+                f"Expected dict from LLM, got {type(result).__name__}"
+            )
+
+        action = result.get("action")
+        if action not in VALID_ACTIONS:
+            raise ValueError(
+                f"Invalid action '{action}', expected one of {VALID_ACTIONS}"
+            )
+
+        reason = result.get("reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Missing or empty 'reason' in reconcile response")
+
+        # Normalize target_id: JSON null / string "null" → Python None
+        target_id = result.get("target_id")
+        if target_id == "null":
+            target_id = None
+
+        # target_id must be str or None (reject int, list, etc.)
+        if target_id is not None and not isinstance(target_id, str):
+            raise ValueError(
+                f"target_id must be str or None, got {type(target_id).__name__}"
+            )
+
+        # UPDATE/DELETE must have a concrete target_id
+        if action in ("UPDATE", "DELETE") and not target_id:
+            raise ValueError(
+                f"Action '{action}' requires a non-null target_id"
+            )
 
         return {
-            "action": result.get("action", "NOOP"),
-            "target_id": result.get("target_id"),
-            "reason": result.get("reason", ""),
+            "action": action,
+            "target_id": target_id,
+            "reason": reason,
         }
