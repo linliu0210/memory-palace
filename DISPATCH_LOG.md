@@ -473,7 +473,18 @@ _N/A — 纯文档重设计，无需 review_
 - **Carry-over**: `get_core_context()` 仍拼接 SUPERSEDED/PRUNED Core items — E2E 测试需确认是否需要过滤仅 active
 
 ### 🔨 Dev
-_(待 Dev Agent 填写)_
+- **Agent**: Claude Code (Opus 4.6 Thinking)
+- **Completed**: 2026-04-08T17:31
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 6 最终 E2E 测试——完整生命周期管道 (save_batch→search→save→curate→search→audit) + Core 预算执行验证。两个冻结测试全绿，项目达到 135/135 全通过。
+  - **文件清单**:
+    - `MOD` tests/test_e2e/test_full_lifecycle.py — 移除 2 个 pytest.skip()，填充完整测试体
+  - **关键设计决策**:
+    1. **分步构造 MockLLM 解决动态 target_id**：test_save_search_update_curate_verify 中先用一个 MockLLM 执行 save_batch 获取 old_id，再构造包含该 old_id 的第二个 MockLLM 给 CuratorService。这避免了预设 UUID 或 monkeypatch 的复杂性。
+    2. **验证新旧偏好通过 RecallStore.search() 的 active 过滤**：SUPERSEDED 记忆被 RecallStore.search() 的 `WHERE status='active'` 排除，无需依赖 get_core_context()（后者仍含 SUPERSEDED/PRUNED items）。
+    3. **Core budget 测试不依赖 LLM**：直接调用 ms.save() 循环填充 Core block，budget_check() 验证 warning 触发，额外 save 验证不阻断。
+  - **Tests**: 133→135 passed, 2→0 skipped, 0 failed 🎯
+  - **已知风险**: 无。Memory Palace v0.1 全量通过。
 
 ### 🔍 Review
 _(待 Codex 填写)_
