@@ -293,14 +293,14 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-008: [Round 4] Engine — FactExtractor + ScoringEngine + ReconcileEngine 🟡
+## TASK-008: [Round 4] Engine — FactExtractor + ScoringEngine + ReconcileEngine ✅
 
 ### 📋 Dispatch
 - **Round**: 4
 - **Branch**: `feat/engine-round4`
 - **Priority**: P0
 - **Dispatched**: 2026-04-08T09:05
-- **Status**: 🟡 IN_PROGRESS
+- **Status**: ✅ DONE
 - **Base**: main @ latest merge
 - **Parallel Protected**: 无
 
@@ -323,6 +323,41 @@ _N/A — 纯文档重设计，无需 review_
     3. ReconcileEngine 在 prompt 中格式化 existing memories 为 `- [id] content` 列表，空列表显示 `(none)`——确保 LLM 有足够上下文做决策
   - **Tests**: 79→104 passed, 56→31 skipped, 0 failed
   - **已知风险**: 无。Engine 层仅依赖 Foundation (LLMProvider) 和 Models (MemoryItem)，接口已稳定供 Round 5 Service 层使用
+  - **Fix Round (Codex Review)**:
+    - **Pass 1** — Finding 1 [HIGH]: `ReconcileEngine` 后解析 schema 校验——`json.loads` 成功后增加 5 项验证：`isinstance(result, dict)`、`action in VALID_ACTIONS`、`reason` 非空、`target_id == "null"` 归一化、`UPDATE/DELETE` 必须有具体 `target_id`。所有异常统一抛出 `ValueError`。新增模块级常量 `VALID_ACTIONS = {"ADD", "UPDATE", "DELETE", "NOOP"}`。
+    - **Pass 1** — Finding 3 [LOW]: `recency_score()` 输入护栏——非有限值 (`NaN`/`Inf`) 返回 `0.0`，负数 clamp 到 `0.0`，确保输出始终在 `(0, 1]`。
+    - **Pass 2** — Finding 1 [MEDIUM]: Schema 收紧——`reason` 改用 `reason.strip()` 非空检查（拒绝纯空白）；`target_id` 增加 `isinstance(target_id, str)` 类型校验（拒绝 int/list 等非 str 值），确保契约 `target_id: str|None`。
+    - **Deferred** — Finding 2 [MEDIUM] [FREE]: `rank()` 接口重构延迟至 Round 5——涉及 SPEC §4.3 调用契约与 Service 层联动，当前 11 个冻结测试基于并行数组 API，现在改接口等于改测试签名，违反 TDD 纪律。
+    - Commit: `fix(engine): validate reconcile schema + clamp recency input` @ `da17316` (amended)
+    - Tests: 104 passed, 31 skipped (unchanged)
+
+### 🔍 Review
+- **Agent**: Codex
+- **Reviewed**: 2026-04-08T10:15
+- **Verdict**: ✅ APPROVED
+- **Findings**:
+  1. [severity: MEDIUM] [FREE] — `ScoringEngine.rank()` 的接口与 SPEC §4.3 的调用契约仍不一致。规范路径写的是 `ScoringEngine.rank(results, query)`，当前实现却要求调用方预先拆出 `recency_hours/importances/relevances` 三个并行数组；这会把 BM25 归一化与字段提取外泄到 Service 层，且长度不一致时仍会直接触发 `IndexError`。该项已在 Dev walkthrough 中标记 deferred to Round 5，属于跨层接口设计债，不阻塞本轮 Engine 交付。
+- **Test Verification**: `uv run pytest tests/ -q` → `104 passed, 31 skipped`
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/test_engine/` → 仅见移除 `pytest.skip()`、补充断言与必要 imports/helper；测试 docstring 与类结构未漂移
+- **SPEC Alignment**: §4.5 的 FactExtractor / Reconcile prompt 与规范文本对齐；§4.6 的 `recency_score()` 衰减公式与 `normalize_bm25()` 公式对齐，且 `recency_score()` 已对负数/非有限输入加护栏；`ReconcileEngine` 当前也已收紧到 `target_id: str|None` 与非空白 `reason`。剩余偏差仅为 `rank()` API 与 §4.3 调用路径的设计不一致，已记录为 Round 5 协同项
+- **Architecture**: `git diff main..feat/engine-round4 -- src/memory_palace/foundation/ src/memory_palace/models/ src/memory_palace/store/` → 空；`uv run ruff check src/memory_palace/engine/` → 0 errors
+
+---
+
+## TASK-009: [Round 5] Service — MemoryService + CuratorService 🟡
+
+### 📋 Dispatch
+- **Round**: 5
+- **Branch**: `feat/service-round5`
+- **Priority**: P0
+- **Dispatched**: 2026-04-08T10:17
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ latest merge
+- **Parallel Protected**: 无
+- **Carry-over**: `rank()` 接口与 SPEC §4.3 不一致，Round 5 需在 Service 层适配或重构
+
+### 🔨 Dev
+_(待 Dev Agent 填写)_
 
 ### 🔍 Review
 _(待 Codex 填写)_
