@@ -344,14 +344,14 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-009: [Round 5] Service — MemoryService + CuratorService 🟡
+## TASK-009: [Round 5] Service — MemoryService + CuratorService ✅
 
 ### 📋 Dispatch
 - **Round**: 5
 - **Branch**: `feat/service-round5`
 - **Priority**: P0
 - **Dispatched**: 2026-04-08T10:17
-- **Status**: 🟡 IN_PROGRESS
+- **Status**: ✅ DONE
 - **Base**: main @ latest merge
 - **Parallel Protected**: 无
 - **Carry-over**: `rank()` 接口与 SPEC §4.3 不一致，Round 5 需在 Service 层适配或重构
@@ -445,5 +445,17 @@ _N/A — 纯文档重设计，无需 review_
 - **Tests**: 133 passed, 2 skipped, 0 failed
 - **Lint**: `ruff check + format --check` on `src/memory_palace/service/ tests/test_service/ tests/conftest.py` → All passed (9 files already formatted)
 - **Frozen layers**: `git diff main -- foundation/ models/ store/ engine/` → 空
+
+### 🔍 Review — Fix Round 2
+- **Agent**: Codex
+- **Reviewed**: 2026-04-08T16:38
+- **Verdict**: ✅ APPROVED
+- **Findings**: 无新增 blocking issue。上轮 blocker 已关闭：Core tier `update()` 现保留旧版本并写入 `status=SUPERSEDED` + `superseded_by`，`forget()` 现为 `status=PRUNED` 的软删除；测试侧 5 个 lint 问题也已清理。
+- **Test Verification**: `uv run pytest tests/ -q` → 133 passed, 2 skipped；`uv run pytest tests/test_service/ -v` → 29/29 passed
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/test_service/` → 仍仅有 Round 5 的 3 个测试文件改动；Fix Round 2 仅做 lint/format 清理，未扩大测试语义改动
+- **SPEC Alignment**: §4.3 / §4.4 / §4.6 当前实现已对齐本轮 review checklist；Core tier 生命周期管理不再违背 soft delete / supersede 契约
+- **Architecture**: `git diff main..feat/service-round5 -- src/memory_palace/foundation/ src/memory_palace/models/ src/memory_palace/store/ src/memory_palace/engine/` → 空；`uv run ruff check src/memory_palace/service/ tests/test_service/ tests/conftest.py` + `uv run ruff format --check ...` → All passed
+- **Carry-over**: `rank()` 并行数组适配、空查询过滤、Curator graceful execute 与审计链修复均已稳定
+- **Residual Risk**: `get_core_context()` 目前仍会拼接 Core block 中所有 item 文本，包括 `SUPERSEDED/PRUNED` 项；这不违反当前冻结测试，但在 Round 6 E2E 中值得确认是否需要仅暴露 active Core memories
 
 ---
