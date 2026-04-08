@@ -305,7 +305,24 @@ _N/A — 纯文档重设计，无需 review_
 - **Parallel Protected**: 无
 
 ### 🔨 Dev
-_(待 Dev Agent 填写)_
+- **Agent**: Claude Code (Opus 4.6 Thinking)
+- **Completed**: 2026-04-08T09:25
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 4 全部 Engine 层——FactExtractor (LLM 原子事实提取 + JSON parse fallback)、ScoringEngine (三因子纯函数模块：recency/importance/BM25 normalize/combined/rank)、ReconcileEngine (LLM 冲突决策 ADD/UPDATE/DELETE/NOOP)。25 个冻结测试全绿。
+  - **文件清单**:
+    - `MOD` src/memory_palace/engine/fact_extractor.py — FactExtractor class: SPEC §4.5 prompt 模板、JSON 解析、malformed 降级返回 []、MemoryItem(OBSERVATION) 构造
+    - `MOD` src/memory_palace/engine/scoring.py — 5 个纯函数：recency_score (exp decay λ=0.01)、importance_score (passthrough)、normalize_bm25 (FTS5 负数 rank → [0,1])、combined_score (α·R+β·I+γ·Rel)、rank (降序排序)
+    - `MOD` src/memory_palace/engine/reconcile.py — ReconcileEngine class: SPEC §4.5 reconcile prompt 模板、JSON 解析、malformed 抛 ValueError
+    - `MOD` src/memory_palace/engine/__init__.py — 导出 FactExtractor、ReconcileEngine、5 个 scoring 函数
+    - `MOD` tests/test_engine/test_fact_extractor.py — 移除 7 个 pytest.skip() + 填充测试体
+    - `MOD` tests/test_engine/test_scoring.py — 移除 11 个 pytest.skip() + 填充测试体
+    - `MOD` tests/test_engine/test_reconcile.py — 移除 7 个 pytest.skip() + 填充测试体
+  - **关键设计决策**:
+    1. ScoringEngine 为纯函数模块（非 class）——SPEC 要求零 LLM 依赖，5 个独立函数比 stateless class 更简洁，且方便 Service 层按需组合
+    2. FactExtractor malformed JSON → return []（graceful degradation），ReconcileEngine malformed JSON → raise ValueError——两者错误策略不同：提取失败可跳过，决策失败必须上报
+    3. ReconcileEngine 在 prompt 中格式化 existing memories 为 `- [id] content` 列表，空列表显示 `(none)`——确保 LLM 有足够上下文做决策
+  - **Tests**: 79→104 passed, 56→31 skipped, 0 failed
+  - **已知风险**: 无。Engine 层仅依赖 Foundation (LLMProvider) 和 Models (MemoryItem)，接口已稳定供 Round 5 Service 层使用
 
 ### 🔍 Review
 _(待 Codex 填写)_
