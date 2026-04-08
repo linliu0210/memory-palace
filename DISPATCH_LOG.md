@@ -460,22 +460,59 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-010: [Round 6] E2E — Full Lifecycle + Core Budget 🟡
+## TASK-010: [Round 6] E2E — Full Lifecycle + Core Budget ✅
 
 ### 📋 Dispatch
 - **Round**: 6 (Final)
 - **Branch**: `feat/e2e-round6`
 - **Priority**: P0
 - **Dispatched**: 2026-04-08T16:47
-- **Status**: 🟡 IN_PROGRESS
+- **Status**: ✅ DONE
 - **Base**: main @ latest merge
 - **Parallel Protected**: 无
 - **Carry-over**: `get_core_context()` 仍拼接 SUPERSEDED/PRUNED Core items — E2E 测试需确认是否需要过滤仅 active
 
 ### 🔨 Dev
-_(待 Dev Agent 填写)_
+- **Agent**: Claude Code (Opus 4.6 Thinking)
+- **Completed**: 2026-04-08T17:31
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 6 最终 E2E 测试——完整生命周期管道 (save_batch→search→save→curate→search→audit) + Core 预算执行验证。两个冻结测试全绿，项目达到 135/135 全通过。
+  - **文件清单**:
+    - `MOD` tests/test_e2e/test_full_lifecycle.py — 移除 2 个 pytest.skip()，填充完整测试体
+  - **关键设计决策**:
+    1. **分步构造 MockLLM 解决动态 target_id**：test_save_search_update_curate_verify 中先用一个 MockLLM 执行 save_batch 获取 old_id，再构造包含该 old_id 的第二个 MockLLM 给 CuratorService。这避免了预设 UUID 或 monkeypatch 的复杂性。
+    2. **验证新旧偏好通过 RecallStore.search() 的 active 过滤**：SUPERSEDED 记忆被 RecallStore.search() 的 `WHERE status='active'` 排除，无需依赖 get_core_context()（后者仍含 SUPERSEDED/PRUNED items）。
+    3. **Core budget 测试不依赖 LLM**：直接调用 ms.save() 循环填充 Core block，budget_check() 验证 warning 触发，额外 save 验证不阻断。
+  - **Tests**: 133→135 passed, 2→0 skipped, 0 failed 🎯
+  - **已知风险**: 无。Memory Palace v0.1 全量通过。
 
 ### 🔍 Review
-_(待 Codex 填写)_
+- **Agent**: Codex
+- **Reviewed**: 2026-04-09T00:42:23+0800
+- **Verdict**: ✅ APPROVED
+- **Findings**:
+  1. 无 blocking issue。两条 E2E 测试已从 `skip` 转为可执行并稳定通过，且关键契约（旧偏好 superseded 后不可检索、Core budget 仅告警不阻断写入）在黑盒验证中成立。
+  2. 非阻断观察：`test_save_search_update_curate_verify` 当前会留下两条“浅色模式”active 记录（Step 3 直接 save + Step 4 UPDATE 产生新版本），测试已覆盖“旧偏好消失”但未覆盖“去重/压缩”语义。
+- **Test Verification**: `uv run pytest tests/ -q` → 135 passed, 0 skipped, 0 failed；`uv run pytest tests/test_e2e/ -v` → 2 passed
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/test_e2e/test_full_lifecycle.py` → 2 个 `pytest.skip()` 已移除并填充测试体；测试类名/方法名/docstring 未改；无新增/删除测试方法。额外仅新增必要 imports。`git diff main..feat/e2e-round6 -- tests/conftest.py` → 空
+- **SPEC Alignment**:
+  - Test 1（lifecycle）语义成立：Step1 `save_batch` 提取“深色”；Step2 可检索旧偏好；Step3 新偏好入库；Step4 `report.memories_updated >= 1`；Step5 旧偏好不再出现在 active 检索结果；Step6 审计链含 `create` + `update`。
+  - MockLLM 时序匹配实现：`CuratorService.run()` 为 1 次 FactExtractor + 每 fact 1 次 Reconcile；测试提供的 2 条响应顺序正确。
+  - `target_id` 使用 Step1 动态 `old_id`，与 Reconcile JSON 精确匹配；黑盒复现实验显示旧记录状态变为 `superseded` 且被 `RecallStore.search()` 的 `status='active'` 过滤。
+  - Test 2（core budget）语义成立：高 importance 路由 Core，`budget_check("general")` 告警触发后 break，额外 `save` 成功且 `budget["warning"] is True`。实测告警通常在 30 次内很早触发（本地复现约第 3 次）。
+- **Architecture**: `git diff main..feat/e2e-round6 -- src/` → 空；`git diff main..feat/e2e-round6 -- src/memory_palace/foundation/ src/memory_palace/models/ src/memory_palace/store/ src/memory_palace/engine/` → 空；分支代码改动范围符合本轮约束（核心测试文件 + dispatch 记录）
+- **Free-form Review**:
+  - A. E2E 覆盖度：本轮两测已覆盖 v0.1 最核心 happy path（提取→检索→冲突更新→审计、Core 预算告警与持续写入）。未覆盖但可接受的缺口：`forget()` 的端到端路径、LLM 异常/超时、Reconcile 返回无效 `target_id` 的端到端容错路径。
+  - B. 测试设计质量：MockLLM 多轮响应设计清晰，可直接映射到调用阶段；Step 5 同时是行为验证与实现契约验证，依赖 `status='active'` 过滤属于合理黑盒契约，不是脆弱白盒断言。
+  - C. 残留风险（Round 5 carry-over）：`get_core_context()` 仍会拼接非 active Core items。当前 E2E 不覆盖该路径，也未暴露回归；该问题不阻断 v0.1 发布，可作为 v0.2 优先修复项。
+  - D. 整体健康：Round 1→6 分层实现与冻结策略执行良好，层间污染控制有效，最终 135/135 全绿可支撑 v0.1 里程碑收口。
+- **Tech Debt Carried Forward**:
+  1. `MemoryService.get_core_context()` 未过滤 `SUPERSEDED/PRUNED`。
+  2. `MemoryService.update()` 仍直接访问 `self._recall_store._conn` 写 SQL（跨层封装债）。
+  3. `rank()` 并行数组形态 API（可读性与类型安全一般，后续可收敛为结构化对象）。
+- **v0.2 Recommendations**:
+  1. 为 `get_core_context()` 增加 active-only 过滤，并补充对应单测 + E2E 断言。
+  2. 将 RecallStore 的 superseded 字段写入下沉为公开 Store API，移除 Service 层 `_conn` 直连。
+  3. 新增 2 组 E2E sad path：LLM 异常恢复、Reconcile 非法 `target_id` 回退策略。
 
 ---
