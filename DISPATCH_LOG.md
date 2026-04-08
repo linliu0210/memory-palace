@@ -459,3 +459,23 @@ _N/A — 纯文档重设计，无需 review_
 - **Residual Risk**: `get_core_context()` 目前仍会拼接 Core block 中所有 item 文本，包括 `SUPERSEDED/PRUNED` 项；这不违反当前冻结测试，但在 Round 6 E2E 中值得确认是否需要仅暴露 active Core memories
 
 ---
+
+## TASK-010: [Round 6] E2E — Full Lifecycle + Core Budget 🟡
+
+### 📋 Dispatch
+- **Round**: 6 (Final)
+- **Branch**: `feat/e2e-round6`
+- **Priority**: P0
+- **Dispatched**: 2026-04-08T16:47
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ latest merge
+- **Parallel Protected**: 无
+- **Carry-over**: `get_core_context()` 仍拼接 SUPERSEDED/PRUNED Core items — E2E 测试需确认是否需要过滤仅 active
+
+### 🔨 Dev
+_(待 Dev Agent 填写)_
+
+### 🔍 Review
+_(待 Codex 填写)_
+
+---
