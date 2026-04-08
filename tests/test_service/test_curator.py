@@ -13,12 +13,11 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from tests.conftest import MockLLM
-
 from memory_palace.foundation.audit_log import AuditLog
 from memory_palace.models.memory import MemoryItem, MemoryStatus, MemoryTier, MemoryType
 from memory_palace.service.curator import CuratorService
 from memory_palace.store.recall_store import RecallStore
+from tests.conftest import MockLLM
 
 
 def _seed_recall(tmp_data_dir, n=3):
@@ -101,9 +100,7 @@ class TestCuratorRun:
         combined = MockLLM(
             responses=[
                 '[{"content": "更新的事实", "importance": 0.5, "tags": []}]',
-                json.dumps(
-                    {"action": "UPDATE", "target_id": target_id, "reason": "updated info"}
-                ),
+                json.dumps({"action": "UPDATE", "target_id": target_id, "reason": "updated info"}),
             ]
         )
         curator = CuratorService(tmp_data_dir, llm=combined)
@@ -128,9 +125,7 @@ class TestCuratorRun:
         combined = MockLLM(
             responses=[
                 '[{"content": "矛盾事实", "importance": 0.5, "tags": []}]',
-                json.dumps(
-                    {"action": "DELETE", "target_id": target_id, "reason": "contradicted"}
-                ),
+                json.dumps({"action": "DELETE", "target_id": target_id, "reason": "contradicted"}),
             ]
         )
         curator = CuratorService(tmp_data_dir, llm=combined)
@@ -146,7 +141,7 @@ class TestCuratorRun:
     @pytest.mark.asyncio
     async def test_run_skips_noop(self, tmp_data_dir, mock_llm_extract, mock_llm_reconcile_noop):
         """NOOP decision → no store mutation."""
-        seeds = _seed_recall(tmp_data_dir)
+        _seed_recall(tmp_data_dir)
 
         combined = MockLLM(
             responses=[

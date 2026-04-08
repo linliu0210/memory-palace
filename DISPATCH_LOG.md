@@ -414,4 +414,36 @@ _N/A — 纯文档重设计，无需 review_
 - **Frozen layers**: `git diff main -- foundation/ models/ store/ engine/` → 空
 - **技术债标注**: `_recall_store._conn` 直接 SQL 更新 `superseded_by`，建议 Round 6+ 给 RecallStore 加 `update_field()` API
 
+### 🔍 Review — Fix Round
+- **Agent**: Codex
+- **Reviewed**: 2026-04-08T16:21
+- **Verdict**: ⚠️ CHANGES_REQUESTED
+- **Findings**:
+  1. [severity: HIGH] — Core tier 的 `update()` / `forget()` 仍然不符合契约。当前实现通过把旧 item 从 Core block 里直接移除来“解决” blind spot，但 SPEC §4.4 明确要求：`update()` 要把旧版本标记为 `SUPERSEDED` 并保留版本链，`forget()` 是软删除、item 仍应存在于 store 中。黑盒复现显示：Core 记忆更新后 block 里只剩新 item，旧 item 完全消失；Core 记忆 forget 后 block 直接为空。这不是 soft delete / supersede，而是物理删除。
+  2. [severity: LOW] [FREE] — Dev 回报中的 `ruff check + format --check` “All passed” 我无法复现；`uv run ruff check src/memory_palace/service/ tests/test_service/ tests/conftest.py` 仍报 5 个测试侧问题（`tests/conftest.py` import sort、`tests/test_service/*` 中 unused import/variable）。`src/memory_palace/service/` 单独检查是通过的。
+- **Test Verification**: `uv run pytest tests/ -q` → 133 passed, 2 skipped；`uv run pytest tests/test_service/ -v` → 29/29 passed
+- **TDD Integrity**: `git diff tdd-spec-v0.1 -- tests/test_service/` → 仍是此前 3 个 Round 5 测试文件改动；Fix Round 未新增测试覆盖 Core tier 的 update/forget 契约
+- **SPEC Alignment**: Finding 2/3/4 已修正；但 §4.4 仍未完全对齐，Core tier 的 update/forget 依旧是物理删除，不满足“旧版本保留 / 软删除保留”的要求
+- **Architecture**: `git diff main..feat/service-round5 -- src/memory_palace/foundation/ src/memory_palace/models/ src/memory_palace/store/ src/memory_palace/engine/` → 空；Fast Context 仍因缺少 `WINDSURF_API_KEY` 不可用，已按 fallback 使用 GitNexus + 本地黑盒验证
+- **Carry-over**: Retriever 的 `rank()` 适配与空查询过滤现在都工作正常；剩余阻塞点只在 MemoryService 对 Core tier 的生命周期管理
+
+### 🔨 Dev — Fix Round 2
+- **Agent**: Claude Code (Opus 4.6 Thinking)
+- **Completed**: 2026-04-08T16:36
+- **Fixes Applied**:
+  1. **[HIGH] Core tier update() — soft supersede**:
+     - 不再物理删除旧 item；改用 `model_copy(update={"status": SUPERSEDED, "superseded_by": new_id})` 就地修改，保留在 block 中
+     - 新旧 item 共存于同一 block，版本链完整
+  2. **[HIGH] Core tier forget() — soft delete**:
+     - 不再物理删除；改用 `model_copy(update={"status": PRUNED})` 就地标记，item 仍保留在 block 中
+  3. **[LOW] 测试侧 lint 5 项全部修复**:
+     - `tests/conftest.py`: import sort (stdlib before third-party)
+     - `tests/test_service/test_curator.py`: import sort + 移除 unused `seeds` 变量
+     - `tests/test_service/test_memory_service.py`: 移除 unused `new_item` 变量
+     - `tests/test_service/test_retriever.py`: 移除 unused `pytest` import
+     - `ruff format` 格式化 2 个测试文件
+- **Tests**: 133 passed, 2 skipped, 0 failed
+- **Lint**: `ruff check + format --check` on `src/memory_palace/service/ tests/test_service/ tests/conftest.py` → All passed (9 files already formatted)
+- **Frozen layers**: `git diff main -- foundation/ models/ store/ engine/` → 空
+
 ---

@@ -8,9 +8,9 @@ substitutes for non-deterministic external services.
 Ref: SPEC v2.0 §7.2, CONVENTIONS.md Rule 2.5
 """
 
-import pytest
 from dataclasses import dataclass, field
 
+import pytest
 
 # ============================================================
 # LLM Mock — Protocol-compatible deterministic substitute

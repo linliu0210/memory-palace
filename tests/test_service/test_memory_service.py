@@ -127,7 +127,7 @@ class TestMemoryServiceUpdate:
         svc = MemoryService(tmp_data_dir)
         original = svc.save("旧内容", importance=0.5)
 
-        new_item = svc.update(original.id, "新内容", reason="更新")
+        svc.update(original.id, "新内容", reason="更新")
 
         # Check old item status in RecallStore
         recall = RecallStore(tmp_data_dir)

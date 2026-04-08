@@ -229,10 +229,18 @@ class MemoryService:
             )
             self._recall_store._conn.commit()
         elif old_tier == MemoryTier.CORE:
-            # Remove old item from Core block
+            # Mark old item as SUPERSEDED in-place (soft — preserve in block per SPEC §4.4)
             block = old_item.room
             items = self._core_store.load(block)
-            items = [i for i in items if i.id != memory_id]
+            for i, item in enumerate(items):
+                if item.id == memory_id:
+                    items[i] = item.model_copy(
+                        update={
+                            "status": MemoryStatus.SUPERSEDED,
+                            "superseded_by": new_item.id,
+                        }
+                    )
+                    break
             self._core_store.save(block, items)
 
         # Save new item
@@ -277,14 +285,15 @@ class MemoryService:
         """Soft delete: mark memory as pruned.
 
         Searches both Recall and Core tiers. For Recall items, sets
-        status to PRUNED. For Core items, removes from the block.
+        status to PRUNED. For Core items, marks as PRUNED in-place
+        (item preserved in block per SPEC §4.4).
 
         Args:
             memory_id: ID of the memory to forget.
             reason: Reason for forgetting.
 
         Returns:
-            True if the memory was found and pruned/removed.
+            True if the memory was found and pruned.
         """
         item = self._recall_store.get(memory_id)
         if item is not None:
@@ -294,10 +303,13 @@ class MemoryService:
             core_item = self._find_in_core(memory_id)
             if core_item is None:
                 return False
-            # Remove from Core block
+            # Mark as PRUNED in-place (soft delete — preserve in block per SPEC §4.4)
             block = core_item.room
             items = self._core_store.load(block)
-            items = [i for i in items if i.id != memory_id]
+            for i, it in enumerate(items):
+                if it.id == memory_id:
+                    items[i] = it.model_copy(update={"status": MemoryStatus.PRUNED})
+                    break
             self._core_store.save(block, items)
 
         self._audit_log.append(

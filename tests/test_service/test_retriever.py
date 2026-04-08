@@ -6,8 +6,6 @@ IMMUTABLE SPEC: Ref: SPEC v2.0 §4.1 S-14
 Retriever combines FTS5 search with ScoringEngine ranking.
 """
 
-import pytest
-
 from memory_palace.models.memory import MemoryItem, MemoryTier, MemoryType
 from memory_palace.service.retriever import Retriever
 from memory_palace.store.recall_store import RecallStore
