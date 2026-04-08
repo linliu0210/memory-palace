@@ -530,7 +530,35 @@ _N/A — 纯文档重设计，无需 review_
 - **目标**: 让 Memory Palace v0.1 真正可用——真实 LLM Provider + Typer CLI + 默认配置
 
 ### 🔨 Dev
-_(待 Dev Agent 填写)_
+- **Agent**: Claude Opus 4.6 (Thinking)
+- **Completed**: 2026-04-09T07:12
+- **Walkthrough**:
+  - **实现摘要**: 实现 Round 7 Integration 层全部交付物——OpenAIProvider (httpx async, OpenAI-compatible API)、Typer CLI (9 个命令覆盖 SPEC §4.4 全部接口)、memory_palace.example.yaml 配置模板、pyproject.toml 入口点与 httpx 依赖、18 个新测试 (CLI runner + provider protocol check)，项目达到 153 passed。
+  - **文件清单**:
+    - `NEW` src/memory_palace/foundation/openai_provider.py — OpenAIProvider class: httpx.AsyncClient async HTTP, ModelConfig defaults, get_api_key() resolution, ConnectionError/RuntimeError/timeout 错误处理, response_format → json_object 支持
+    - `MOD` src/memory_palace/integration/cli.py — 9 个 Typer 命令: save/save-batch/search/update/forget/curate/inspect/audit/rooms, Rich Table/Console 美化输出, --data-dir 共享选项, asyncio.run() 包裹 async 命令
+    - `NEW` memory_palace.example.yaml — SPEC §8.2 完整配置模板 (data_dir/llm/core/rooms/scoring/curator)
+    - `MOD` pyproject.toml — 添加 `httpx>=0.27` 依赖 + `[project.scripts] palace = "memory_palace.integration.cli:app"` 入口
+    - `NEW` tests/test_integration/__init__.py — 测试包
+    - `NEW` tests/test_integration/test_cli.py — 14 个 CLI 测试 (save/search/inspect/rooms/audit/update/forget)
+    - `NEW` tests/test_integration/test_openai_provider.py — 4 个 provider 测试 (protocol compliance/config/connection error/timeout)
+  - **关键设计决策**:
+    1. **OpenAIProvider 使用 httpx 而非 openai SDK**：避免引入重量级 SDK 依赖，httpx AsyncClient 直接调用 `/v1/chat/completions` 端点，支持任意 OpenAI-compatible 后端 (DeepSeek, Ollama, vLLM 等)
+    2. **CLI 构造 MemoryService 时按需注入 LLM**：save/search/inspect/audit/rooms 不需要 LLM 即可工作；仅 save-batch/curate 自动构造 OpenAIProvider
+    3. **CLI 数据目录自动创建**：`_resolve_data_dir()` 自动 mkdir -p 数据目录 + core/ 子目录，用户无需手动初始化
+    4. **错误处理统一模式**：所有命令捕获异常 → Rich 红色输出 → typer.Exit(code=1)
+  - **Tests**: 135→153 passed, 0 skipped, 0 failed
+  - **Lint**: `ruff check` + `ruff format --check` → All passed
+  - **Frozen layers**: `git diff main -- src/memory_palace/service/ src/memory_palace/engine/ src/memory_palace/store/ src/memory_palace/models/` → 空
+  - **CLI Demo 验证**:
+    ```
+    palace save "用户喜欢深色模式" --importance 0.5  → ✓ 记忆已保存
+    palace search "深色"                              → ✓ 搜索结果表格
+    palace inspect                                    → ✓ Memory Palace 概览
+    palace rooms                                      → ✓ 房间列表
+    palace audit                                      → ✓ 审计日志
+    ```
+  - **已知风险**: 无。Integration 层仅依赖 Foundation + Service，冻结层无侵入
 
 ### 🔍 Review
 _(待 Codex 填写)_
