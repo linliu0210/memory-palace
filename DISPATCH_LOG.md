@@ -251,14 +251,14 @@ _N/A — 纯文档重设计，无需 review_
 
 ---
 
-## TASK-007: [Round 3] Store — CoreStore + RecallStore 🟡
+## TASK-007: [Round 3] Store — CoreStore + RecallStore ✅
 
 ### 📋 Dispatch
 - **Round**: 3
 - **Branch**: `feat/store-round3`
 - **Priority**: P0
 - **Dispatched**: 2026-04-08T00:16
-- **Status**: 🟡 IN_PROGRESS
+- **Status**: ✅ DONE
 - **Base**: main @ latest merge
 - **Parallel Protected**: 无
 
@@ -280,6 +280,32 @@ _N/A — 纯文档重设计，无需 review_
     3. `save()` 方法先序列化为 JSON 再写文件；`load()` 使用 `model_validate()` 从 dict 反序列化（非 `model_validate_json()`，因后者只接受 str）。
   - **Tests**: 57→79 passed, 78→56 skipped, 0 failed
   - **已知风险**: CJK 搜索是逐字匹配（无分词器），长句可能产生假阳性；v0.2 引入向量检索后可改善
+
+### 🔍 Review
+- **Agent**: Codex
+- **Reviewed**: 2026-04-08T01:10 (R1), 2026-04-08T09:00 (Re-review)
+- **Verdict**: ✅ APPROVED (after fix in `5768a7e`)
+- **R1 Findings** (both fixed):
+  1. [HIGH] RecallStore query 未过滤非 active 记录 → Fixed: WHERE status = 'active'
+  2. [MEDIUM] CoreStore.delete() 创建 ghost block → Fixed: no-op when block missing
+- **Re-review**: 79 passed, 56 skipped; fix verified
+- **TDD Integrity**: 测试结构未变
+
+---
+
+## TASK-008: [Round 4] Engine — FactExtractor + ScoringEngine + ReconcileEngine 🟡
+
+### 📋 Dispatch
+- **Round**: 4
+- **Branch**: `feat/engine-round4`
+- **Priority**: P0
+- **Dispatched**: 2026-04-08T09:05
+- **Status**: 🟡 IN_PROGRESS
+- **Base**: main @ latest merge
+- **Parallel Protected**: 无
+
+### 🔨 Dev
+_(待 Dev Agent 填写)_
 
 ### 🔍 Review
 _(待 Codex 填写)_
