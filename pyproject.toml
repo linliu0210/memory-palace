@@ -15,7 +15,11 @@ dependencies = [
     "structlog>=24.1",
     "typer>=0.9",
     "rich>=13.0",
+    "httpx>=0.27",
 ]
+
+[project.scripts]
+palace = "memory_palace.integration.cli:app"
 
 [project.optional-dependencies]
 dev = [

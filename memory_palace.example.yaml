@@ -1,0 +1,46 @@
+# Memory Palace — Example Configuration
+# Copy to ~/.memory_palace/memory_palace.yaml or your data directory.
+#
+# Priority (high → low): env vars > YAML > defaults.
+# Environment override: MP_LLM__PROVIDER=deepseek, MP_LLM__MODEL_ID=...
+
+memory_palace:
+  llm:
+    provider: openai          # openai / deepseek / local
+    model_id: gpt-4o-mini
+    base_url: https://api.openai.com/v1
+    max_tokens: 2000
+
+  storage:
+    base_dir: ./data
+
+  core:
+    max_bytes: 2048
+
+  rooms:
+    - name: general
+      description: 未分类通用记忆
+    - name: preferences
+      description: 用户偏好
+    - name: projects
+      description: 项目知识
+    - name: people
+      description: 人物关系
+    - name: skills
+      description: 技能记忆
+
+  scoring:
+    recency: 0.25
+    importance: 0.25
+    relevance: 0.50
+
+  curator:
+    trigger:
+      timer_hours: 24
+      session_count: 20
+      cooldown_hours: 1
+    prune_threshold: 0.05
+
+  # v0.2 planned fields (not yet supported by Config model):
+  # data_dir: ~/.memory_palace        # use --data-dir CLI flag instead
+  # core.warn_threshold: 0.8          # budget warning threshold
