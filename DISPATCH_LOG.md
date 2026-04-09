@@ -602,3 +602,40 @@ _N/A — 纯文档重设计，无需 review_
   - D. v0.1 集成完整度：`OpenAIProvider.complete(prompt, response_format=None)` 与 FactExtractor/ReconcileEngine 调用签名兼容；但 `response_format={"type":"json_object"}` 与 FactExtractor 期望“JSON array”存在潜在语义冲突，当前虽未触发（调用方未传 `response_format`），仍建议加测试锁定行为边界。
 
 ---
+
+### 🔨 Dev — Fix Round
+- **Agent**: Claude Opus 4.6 (Thinking)
+- **Completed**: 2026-04-09T09:36
+- **Fixes Applied**:
+  1. **[P0] Finding 1 — 配置模板与 Config 不兼容**:
+     - 移除 YAML 中 `data_dir` 顶层字段（Config 模型不接受）
+     - `core.budget_limit` / `core.warn_threshold` → `core.max_bytes`（对齐 `CoreConfig`）
+     - `LLMConfig` 新增 `base_url: str` 和 `max_tokens: int` 字段（对齐 `ModelConfig` + YAML 模板）
+     - 验证：`Config.from_yaml('memory_palace.example.yaml')` 成功解析所有字段
+  2. **[P1] Finding 2 — rooms 命令缺少 --data-dir**:
+     - `rooms()` 命令新增 `data_dir: str = typer.Option(...)` 参数
+     - 新增 `try/except` 包裹，与其他 8 个命令保持一致契约
+  3. **[P1] Finding 3 — _build_llm_provider 忽略 base_url/max_tokens**:
+     - `ModelConfig(...)` 构造中新增 `base_url=cfg.llm.base_url` 和 `max_tokens=cfg.llm.max_tokens`
+     - DeepSeek/Ollama 等非 OpenAI 后端现在可正确读取 YAML 配置
+  4. **[P2] Finding 4 — Provider 测试收紧错误映射**:
+     - 使用 `unittest.mock.patch` + `AsyncMock` 替代真实网络请求，消除环境依赖
+     - `test_connect_error_maps_to_connection_error`: `httpx.ConnectError` → `ConnectionError`（strict）
+     - `test_timeout_maps_to_connection_error`: `httpx.ReadTimeout` → `ConnectionError`（strict）
+     - `test_non_200_maps_to_runtime_error`: HTTP 429 → `RuntimeError`（新增，覆盖非 200 分支）
+- **Tests**: 153→154 passed, 0 skipped, 0 failed（新增 1 个 non-200 mock 测试）
+- **Lint**: `ruff check` + `ruff format --check` → All passed
+- **Frozen layers**: `git diff main -- service/ engine/ store/ models/` → 空
+- **Acceptance Criteria 验证**:
+  ```
+  Config.from_yaml('memory_palace.example.yaml')  → ✅ 解析成功
+  palace rooms --help | grep data-dir              → ✅ 找到 --data-dir
+  palace rooms --data-dir /tmp/mp_test             → ✅ 房间表格正常
+  palace save "fix测试" --data-dir /tmp/mp_fix_test → ✅ 保存成功
+  palace search "fix" --data-dir /tmp/mp_fix_test  → ✅ 搜索命中
+  ```
+
+### 🔍 Review — Fix Round
+_(待 Codex 填写)_
+
+---
