@@ -21,6 +21,8 @@ class LLMConfig(BaseModel):
 
     provider: str = "openai"
     model_id: str = "gpt-4o-mini"
+    base_url: str = "https://api.openai.com/v1"
+    max_tokens: int = 2000
 
 
 class StorageConfig(BaseModel):

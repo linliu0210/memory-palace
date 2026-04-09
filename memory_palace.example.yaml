@@ -5,17 +5,17 @@
 # Environment override: MP_LLM__PROVIDER=deepseek, MP_LLM__MODEL_ID=...
 
 memory_palace:
-  data_dir: ~/.memory_palace
-
   llm:
     provider: openai          # openai / deepseek / local
     model_id: gpt-4o-mini
     base_url: https://api.openai.com/v1
     max_tokens: 2000
 
+  storage:
+    base_dir: ./data
+
   core:
-    budget_limit: 2048
-    warn_threshold: 0.8
+    max_bytes: 2048
 
   rooms:
     - name: general
@@ -40,3 +40,7 @@ memory_palace:
       session_count: 20
       cooldown_hours: 1
     prune_threshold: 0.05
+
+  # v0.2 planned fields (not yet supported by Config model):
+  # data_dir: ~/.memory_palace        # use --data-dir CLI flag instead
+  # core.warn_threshold: 0.8          # budget warning threshold

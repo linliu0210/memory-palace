@@ -59,6 +59,8 @@ def _build_llm_provider(data_dir: Path):
         model_config = ModelConfig(
             provider=cfg.llm.provider,
             model_id=cfg.llm.model_id,
+            base_url=cfg.llm.base_url,
+            max_tokens=cfg.llm.max_tokens,
         )
     else:
         model_config = ModelConfig()
@@ -360,13 +362,19 @@ def audit(
 
 
 @app.command()
-def rooms() -> None:
+def rooms(
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
     """列出所有房间。"""
-    table = Table(title="记忆宫殿 — 房间列表")
-    table.add_column("房间", style="bold cyan")
-    table.add_column("描述")
+    try:
+        table = Table(title="记忆宫殿 — 房间列表")
+        table.add_column("房间", style="bold cyan")
+        table.add_column("描述")
 
-    for name, desc in DEFAULT_ROOMS:
-        table.add_row(name, desc)
+        for name, desc in DEFAULT_ROOMS:
+            table.add_row(name, desc)
 
-    console.print(table)
+        console.print(table)
+    except Exception as exc:
+        console.print(f"[red]✗ 获取房间列表失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc

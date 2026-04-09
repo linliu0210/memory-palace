@@ -561,6 +561,44 @@ _N/A — 纯文档重设计，无需 review_
   - **已知风险**: 无。Integration 层仅依赖 Foundation + Service，冻结层无侵入
 
 ### 🔍 Review
-_(待 Codex 填写)_
+- **Agent**: Codex
+- **Reviewed**: 2026-04-09T07:22:01+0800
+- **Verdict**: ⚠️ CHANGES_REQUESTED
+- **Findings**:
+  1. **[P0] 配置模板与实际 `Config` 不兼容，复制示例后会直接导致 LLM 命令失败。**
+     - 证据：`uv run python -c "from memory_palace.config import Config; Config.from_yaml(...memory_palace.example.yaml)"` 报 `ValidationError: data_dir Extra inputs are not permitted`。
+     - 复现：将 `memory_palace.example.yaml` 复制为 `data_dir/memory_palace.yaml` 后执行 `palace save-batch`，命令在配置解析阶段直接失败（exit=1）。
+     - 影响：Round 7“真正可用”目标被破坏，用户按模板配置后无法使用 `save-batch/curate`。
+  2. **[P1] `rooms` 命令未实现统一 `--data-dir` 契约，且未按统一错误处理模板包装。**
+     - 证据：`uv run palace rooms --help` 仅有 `--help`，无 `--data-dir`。
+     - 代码：`src/memory_palace/integration/cli.py` 中 `rooms()` 无参数、无 `try/except`，与其余命令不一致。
+  3. **[P1] `_build_llm_provider` 只读取 `provider/model_id`，忽略 `base_url/max_tokens`，导致多 Provider 场景行为错误。**
+     - 证据：YAML 设 `provider=deepseek` 后，构造出的 `OpenAIProvider._config.base_url` 仍是 `https://api.openai.com/v1`。
+     - 影响：OpenAI-compatible 后端切换不完整，`deepseek/local/vllm` 等场景不可靠。
+  4. **[P2] Provider 测试未严格校验错误映射与非 200 分支。**
+     - 当前测试允许 `(ConnectionError, RuntimeError)`，未锁定 `ConnectError/TimeoutException -> ConnectionError` 契约，`HTTP != 200 -> RuntimeError` 也未覆盖。
+- **Test Verification**:
+  - `uv run pytest tests/ -q` → `153 passed in 1.34s`
+  - `uv run pytest tests/test_integration/ -v` → `18 passed in 1.07s`
+- **CLI Demo**:
+  - `uv run palace --help`：9 个命令均可见。
+  - `uv run palace save "测试记忆" --importance 0.5 --data-dir /tmp/mp_review_test`：成功，返回记忆 ID。
+  - `uv run palace search "测试" --data-dir /tmp/mp_review_test`：可检索到刚保存内容（表格输出）。
+  - `uv run palace inspect --data-dir /tmp/mp_review_test`：显示 core/recall/total 概览。
+  - `uv run palace rooms`：可显示房间表格（但无 `--data-dir`）。
+  - `uv run palace audit --data-dir /tmp/mp_review_test`：可显示 create 审计记录。
+  - 额外链路验证（A项）：`save "xxx" -> search "xxx" -> update <id> "yyy" -> search "yyy"` 成功；`search "xxx"` 返回“未找到匹配的记忆”，说明版本替换生效。
+- **Architecture**:
+  - `git diff main..feat/integration-round7 -- src/memory_palace/service/ src/memory_palace/engine/ src/memory_palace/store/ src/memory_palace/models/` → 空
+  - `git diff main..feat/integration-round7 -- src/memory_palace/foundation/llm.py src/memory_palace/foundation/audit_log.py` → 空
+  - `git diff main..feat/integration-round7 --name-status` → 主要为 `openai_provider.py` 新增、`cli.py` 修改、示例配置与 integration 测试新增；另含 `pyproject.toml/uv.lock/DISPATCH_LOG.md` 修改
+- **Lint**:
+  - `uv run ruff check src/memory_palace/integration/ src/memory_palace/foundation/openai_provider.py` → All checks passed
+  - `uv run ruff format --check src/memory_palace/integration/ src/memory_palace/foundation/openai_provider.py` → 4 files already formatted
+- **Free-form Review**:
+  - A. CLI 可用性：基础 CRUD 路径可用，中文 Rich 输出可读性好；`save→search→update→search` 行为正确。
+  - B. 安全性：未发现 API key 明文输出；`--data-dir` 与 `save-batch --file` 允许任意本地路径访问，符合本地 CLI 工具属性，但建议文档明确“仅受当前用户文件权限约束”。
+  - C. 代码质量：`inspect` 直接实例化 `RecallStore/CoreStore` 形成跨层耦合，长期建议由 `MemoryService` 暴露 `get_by_id`；`rooms` 使用硬编码列表可运行但与配置源脱节，建议改为读 `Config.rooms`；`_build_llm_provider` 应完整复用配置字段（至少 `base_url/max_tokens`）。
+  - D. v0.1 集成完整度：`OpenAIProvider.complete(prompt, response_format=None)` 与 FactExtractor/ReconcileEngine 调用签名兼容；但 `response_format={"type":"json_object"}` 与 FactExtractor 期望“JSON array”存在潜在语义冲突，当前虽未触发（调用方未传 `response_format`），仍建议加测试锁定行为边界。
 
 ---
