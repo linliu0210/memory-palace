@@ -636,6 +636,35 @@ _N/A — 纯文档重设计，无需 review_
   ```
 
 ### 🔍 Review — Fix Round
-_(待 Codex 填写)_
+- **Agent**: Codex
+- **Reviewed**: 2026-04-09T09:41:28+0800
+- **Verdict**: ✅ APPROVED
+- **Findings**:
+  1. **[P3 | 非阻塞] provider 测试文件存在一处未使用导入（仅在扩大 lint 范围到 tests 时触发）。**
+     - 位置：`tests/test_integration/test_openai_provider.py:72`
+     - 现象：`uv run ruff check tests/test_integration/test_openai_provider.py` 报 `F401 httpx imported but unused`。
+     - 说明：不影响本轮功能验收与既定 lint 命令结果，建议后续顺手清理。
+- **Fix Closure（上轮 4 项）**:
+  - P0 配置模板兼容性：已关闭。`Config.from_yaml(memory_palace.example.yaml)` 解析成功。
+  - P1 `rooms --data-dir`：已关闭。`palace rooms --help` 显示 `--data-dir`，命令可正常执行。
+  - P1 `_build_llm_provider` 字段透传：已关闭。`base_url/max_tokens` 已从 `cfg.llm` 传入 `ModelConfig`。
+  - P2 Provider 错误映射测试：已关闭。新增严格 mock 测试覆盖 `ConnectError/Timeout/non-200`。
+- **Test Verification**:
+  - `uv run pytest tests/ -q` → `154 passed in 0.48s`
+  - `uv run pytest tests/test_integration/ -v` → `19 passed in 0.29s`
+- **Config Verification**:
+  - `Config.from_yaml('memory_palace.example.yaml')` → 成功，读取到 `llm.base_url/max_tokens` 与 `core.max_bytes`
+- **CLI Verification**:
+  - `uv run palace rooms --help | rg data-dir` → 命中 `--data-dir`
+  - 实跑链路：`save -> search -> update -> search -> rooms --data-dir -> audit` 全部成功，更新后新版本可检索
+- **Architecture**:
+  - `git diff main..feat/integration-round7 -- src/memory_palace/service/ src/memory_palace/engine/ src/memory_palace/store/ src/memory_palace/models/` → 空
+  - `git diff main..feat/integration-round7 -- src/memory_palace/foundation/llm.py src/memory_palace/foundation/audit_log.py` → 空
+  - 变更集中于 Integration/Config/测试层，冻结层保持无侵入
+- **Lint**:
+  - 既定验收命令：`uv run ruff check src/memory_palace/integration/ src/memory_palace/foundation/openai_provider.py` + `ruff format --check` → 通过
+  - 扩展检查（含 provider 测试文件）→ 见上方 P3 非阻塞项
+- **Re-Review Conclusion**:
+  - Round 7 集成阻塞问题已解除，CLI 与 Provider 达到可用标准，满足合并条件。
 
 ---
