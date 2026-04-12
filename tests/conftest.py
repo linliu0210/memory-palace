@@ -9,6 +9,7 @@ Ref: SPEC v2.0 §7.2, CONVENTIONS.md Rule 2.5
 """
 
 from dataclasses import dataclass, field
+import json
 
 import pytest
 
@@ -109,6 +110,44 @@ def mock_llm_reconcile_noop():
 def mock_llm_malformed():
     """Mock LLM that returns malformed JSON."""
     return MockLLM(responses=["this is not valid json {{{"])
+
+
+# ============================================================
+# Fixtures: ReflectionEngine Mocks
+# ============================================================
+
+
+@pytest.fixture
+def mock_llm_reflect():
+    """Mock LLM returning a valid single-insight reflection response."""
+    response = json.dumps([
+        {
+            "content": "用户正在从Python学习者转变为ML实践者",
+            "source_ids": ["id1", "id2"],
+        }
+    ])
+    return MockLLM(responses=[response])
+
+
+@pytest.fixture
+def mock_llm_reflect_many():
+    """Mock LLM returning 5 insights (for testing max_insights cap)."""
+    response = json.dumps([
+        {"content": f"Insight {i}", "source_ids": []} for i in range(5)
+    ])
+    return MockLLM(responses=[response])
+
+
+@pytest.fixture
+def mock_llm_reflect_with_sources():
+    """Mock LLM returning insights with source_ids populated."""
+    response = json.dumps([
+        {
+            "content": "用户同时对Python和ML感兴趣，可能在做ML项目",
+            "source_ids": ["src_a", "src_b"],
+        }
+    ])
+    return MockLLM(responses=[response])
 
 
 # ============================================================
