@@ -1,12 +1,16 @@
 """CuratorReport data model.
 
-Ref: SPEC v2.0 §2.3
+Ref: SPEC v2.0 §2.3, SPEC_V02 §2.4
 """
+
+from __future__ import annotations
 
 import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field
+
+from memory_palace.engine.health import MemoryHealthScore
 
 
 class CuratorReport(BaseModel):
@@ -14,6 +18,8 @@ class CuratorReport(BaseModel):
 
     Ref: SPEC v2.0 §2.3
     """
+
+    model_config = {"arbitrary_types_allowed": True}
 
     run_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     triggered_at: datetime
@@ -32,3 +38,6 @@ class CuratorReport(BaseModel):
 
     health_freshness: float = 0.0  # [0,1]
     health_efficiency: float = 0.0  # [0,1]
+
+    # v0.2: full 5-dimension health score (optional — set by CuratorGraph)
+    health: MemoryHealthScore | None = None

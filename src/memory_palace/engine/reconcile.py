@@ -85,15 +85,11 @@ class ReconcileEngine:
 
         # ── Post-parse schema validation ──────────────────────────
         if not isinstance(result, dict):
-            raise ValueError(
-                f"Expected dict from LLM, got {type(result).__name__}"
-            )
+            raise ValueError(f"Expected dict from LLM, got {type(result).__name__}")
 
         action = result.get("action")
         if action not in VALID_ACTIONS:
-            raise ValueError(
-                f"Invalid action '{action}', expected one of {VALID_ACTIONS}"
-            )
+            raise ValueError(f"Invalid action '{action}', expected one of {VALID_ACTIONS}")
 
         reason = result.get("reason")
         if not isinstance(reason, str) or not reason.strip():
@@ -106,15 +102,11 @@ class ReconcileEngine:
 
         # target_id must be str or None (reject int, list, etc.)
         if target_id is not None and not isinstance(target_id, str):
-            raise ValueError(
-                f"target_id must be str or None, got {type(target_id).__name__}"
-            )
+            raise ValueError(f"target_id must be str or None, got {type(target_id).__name__}")
 
         # UPDATE/DELETE must have a concrete target_id
         if action in ("UPDATE", "DELETE") and not target_id:
-            raise ValueError(
-                f"Action '{action}' requires a non-null target_id"
-            )
+            raise ValueError(f"Action '{action}' requires a non-null target_id")
 
         return {
             "action": action,

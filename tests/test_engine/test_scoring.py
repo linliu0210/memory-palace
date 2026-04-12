@@ -13,7 +13,7 @@ from memory_palace.engine.scoring import (
     combined_score,
     importance_score,
     normalize_bm25,
-    rank,
+    rank_legacy,
     recency_score,
 )
 
@@ -97,6 +97,6 @@ class TestCombinedScore:
         recency_hours = [100.0, 0.0, 50.0]
         importances = [0.1, 0.9, 0.5]
         relevances = [0.1, 0.9, 0.5]
-        result = rank(items, recency_hours, importances, relevances)
+        result = rank_legacy(items, recency_hours, importances, relevances)
         assert result[0] == "high"
         assert result[-1] == "low"

@@ -85,9 +85,7 @@ class TestInspectCommand:
     def test_inspect_nonexistent_id(self, tmp_path):
         """Inspect with invalid ID shows not-found message."""
         data_dir = str(tmp_path)
-        result = runner.invoke(
-            app, ["inspect", "nonexistent-id", "--data-dir", data_dir]
-        )
+        result = runner.invoke(app, ["inspect", "nonexistent-id", "--data-dir", data_dir])
         assert result.exit_code == 0
         assert "未找到" in result.stdout
 
@@ -131,29 +129,26 @@ class TestUpdateCommand:
     def test_update_nonexistent(self, tmp_path):
         """Update with invalid ID exits with error."""
         data_dir = str(tmp_path)
-        result = runner.invoke(
-            app, ["update", "bad-id", "new content", "--data-dir", data_dir]
-        )
+        result = runner.invoke(app, ["update", "bad-id", "new content", "--data-dir", data_dir])
         assert result.exit_code == 1
 
     def test_update_success(self, tmp_path):
         """Update a previously saved memory succeeds."""
         data_dir = str(tmp_path)
         # Save first
-        save_result = runner.invoke(
-            app, ["save", "旧内容", "--data-dir", data_dir]
-        )
+        save_result = runner.invoke(app, ["save", "旧内容", "--data-dir", data_dir])
         assert save_result.exit_code == 0
         # Extract ID from output (id=XXXXXXXX…)
         import re
 
         match = re.search(r"id=([a-f0-9]{8})", save_result.stdout)
         assert match, f"Could not find ID in output: {save_result.stdout}"
-        short_id = match.group(1)
+        match.group(1)
 
         # Get the full ID from recall store
-        from memory_palace.store.recall_store import RecallStore
         from pathlib import Path
+
+        from memory_palace.store.recall_store import RecallStore
 
         store = RecallStore(Path(data_dir))
         items = store.get_recent(1)
@@ -183,8 +178,6 @@ class TestForgetCommand:
     def test_forget_nonexistent(self, tmp_path):
         """Forget with invalid ID shows not-found."""
         data_dir = str(tmp_path)
-        result = runner.invoke(
-            app, ["forget", "bad-id", "--data-dir", data_dir]
-        )
+        result = runner.invoke(app, ["forget", "bad-id", "--data-dir", data_dir])
         assert result.exit_code == 0
         assert "未找到" in result.stdout

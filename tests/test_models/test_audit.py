@@ -6,8 +6,6 @@ IMMUTABLE SPEC: Ref: SPEC v2.0 §2.2 AuditEntry
 
 from datetime import datetime
 
-from pydantic import ValidationError
-
 from memory_palace.models.audit import AuditAction, AuditEntry
 
 

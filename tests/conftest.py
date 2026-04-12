@@ -9,6 +9,7 @@ Ref: SPEC v2.0 §7.2, CONVENTIONS.md Rule 2.5
 """
 
 from dataclasses import dataclass, field
+import json
 
 import pytest
 
@@ -112,6 +113,44 @@ def mock_llm_malformed():
 
 
 # ============================================================
+# Fixtures: ReflectionEngine Mocks
+# ============================================================
+
+
+@pytest.fixture
+def mock_llm_reflect():
+    """Mock LLM returning a valid single-insight reflection response."""
+    response = json.dumps([
+        {
+            "content": "用户正在从Python学习者转变为ML实践者",
+            "source_ids": ["id1", "id2"],
+        }
+    ])
+    return MockLLM(responses=[response])
+
+
+@pytest.fixture
+def mock_llm_reflect_many():
+    """Mock LLM returning 5 insights (for testing max_insights cap)."""
+    response = json.dumps([
+        {"content": f"Insight {i}", "source_ids": []} for i in range(5)
+    ])
+    return MockLLM(responses=[response])
+
+
+@pytest.fixture
+def mock_llm_reflect_with_sources():
+    """Mock LLM returning insights with source_ids populated."""
+    response = json.dumps([
+        {
+            "content": "用户同时对Python和ML感兴趣，可能在做ML项目",
+            "source_ids": ["src_a", "src_b"],
+        }
+    ])
+    return MockLLM(responses=[response])
+
+
+# ============================================================
 # Fixtures: File System
 # ============================================================
 
@@ -127,3 +166,48 @@ def tmp_data_dir(tmp_path):
     (tmp_path / "core").mkdir()
     (tmp_path / "archival").mkdir()
     return tmp_path
+
+
+# ============================================================
+# Embedding Mock — Protocol-compatible deterministic substitute
+# ============================================================
+
+
+@dataclass
+class MockEmbedding:
+    """Hash-based deterministic embedding mock.
+
+    Implements EmbeddingProvider Protocol:
+        async def embed(self, texts: list[str]) -> list[list[float]]
+        @property dimension -> int
+
+    Same text always produces the same unit vector — makes tests
+    reproducible without any external API calls.
+    """
+
+    _dimension: int = 8
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._hash_to_vector(t) for t in texts]
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def _hash_to_vector(self, text: str) -> list[float]:
+        """Deterministic: same text → same unit vector."""
+        import hashlib
+
+        h = hashlib.sha256(text.encode()).digest()
+        raw = [b / 255.0 for b in h[: self._dimension]]
+        # Normalize to unit vector
+        norm = sum(x * x for x in raw) ** 0.5
+        if norm == 0:
+            return [0.0] * self._dimension
+        return [x / norm for x in raw]
+
+
+@pytest.fixture
+def mock_embedding():
+    """Deterministic hash-based embedding mock (dim=8)."""
+    return MockEmbedding()

@@ -1,13 +1,49 @@
-"""ScoringEngine — Three-factor pure-function scoring module.
+"""ScoringEngine — Enhanced scoring with ScoredCandidate interface.
 
-Zero LLM dependency. Implements recency × importance × relevance scoring
-from Generative Agents (Park et al., 2023).
+v0.2 enhancements:
+- ScoredCandidate dataclass replaces parallel-array API (TD-3)
+- cosine_similarity for vector relevance
+- 4-factor weighted scoring: recency × importance × relevance × room_bonus
+- rank_legacy() preserves v0.1 backward compatibility
 
-Ref: SPEC v2.0 §4.1 S-11, §4.6
+Ref: SPEC_V02 §2.3, SPEC v2.0 §4.1 S-11, §4.6
 """
 
+from __future__ import annotations
+
 import math
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from memory_palace.models.memory import MemoryItem
+
+
+# ── ScoredCandidate ─────────────────────────────────────────
+
+
+@dataclass
+class ScoredCandidate:
+    """A memory item with pre-computed scoring factors.
+
+    Replaces v0.1 parallel-array API for cleaner, less error-prone ranking.
+
+    Attributes:
+        item: The MemoryItem being scored.
+        recency_hours: Hours since last access (≥ 0).
+        importance: Importance factor [0, 1].
+        relevance: Cosine similarity or normalized BM25 [0, 1].
+        room_bonus: 1.0 if item's room matches query context, else 0.0.
+    """
+
+    item: MemoryItem
+    recency_hours: float
+    importance: float
+    relevance: float
+    room_bonus: float = 0.0
+
+
+# ── Pure scoring functions ──────────────────────────────────
 
 
 def recency_score(hours_since_access: float, decay_rate: float = 0.01) -> float:
@@ -61,13 +97,31 @@ def normalize_bm25(raw_rank: float, all_ranks: list[float]) -> float:
     return (max_r - raw_rank) / (max_r - min_r)
 
 
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors.
+
+    Args:
+        a: First vector.
+        b: Second vector (same dimensionality as a).
+
+    Returns:
+        Cosine similarity in [-1, 1]. Returns 0.0 if either vector is zero.
+    """
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 def combined_score(
     recency: float,
     importance: float,
     relevance: float,
     weights: tuple[float, float, float] = (0.25, 0.25, 0.50),
 ) -> float:
-    """Weighted sum: α·recency + β·importance + γ·relevance.
+    """Weighted sum: α·recency + β·importance + γ·relevance (v0.1 3-factor).
 
     Args:
         recency: Recency factor [0, 1].
@@ -82,7 +136,46 @@ def combined_score(
     return alpha * recency + beta * importance + gamma * relevance
 
 
+# ── v0.2 ranking (ScoredCandidate interface) ────────────────
+
+
 def rank(
+    candidates: list[ScoredCandidate],
+    weights: tuple[float, float, float, float] = (0.20, 0.20, 0.50, 0.10),
+    decay_rate: float = 0.01,
+) -> list[MemoryItem]:
+    """Sort candidates by 4-factor weighted score, descending.
+
+    Score = α·recency + β·importance + γ·relevance + δ·room_bonus
+
+    Args:
+        candidates: ScoredCandidate instances to rank.
+        weights: (α_recency, β_importance, γ_relevance, δ_room_bonus).
+        decay_rate: Decay constant λ for recency computation.
+
+    Returns:
+        MemoryItems sorted by combined score, highest first.
+
+    Ref: SPEC_V02 §2.3 ScoredCandidate 接口
+    """
+    if not candidates:
+        return []
+
+    alpha, beta, gamma, delta = weights
+    scored = []
+    for c in candidates:
+        r = recency_score(c.recency_hours, decay_rate)
+        score = alpha * r + beta * c.importance + gamma * c.relevance + delta * c.room_bonus
+        scored.append((score, c.item))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored]
+
+
+# ── v0.1 backward compatibility ─────────────────────────────
+
+
+def rank_legacy(
     items: list[Any],
     recency_hours: list[float],
     importances: list[float],
@@ -91,6 +184,8 @@ def rank(
     decay_rate: float = 0.01,
 ) -> list[Any]:
     """Sort items by combined score, descending (highest first).
+
+    v0.1 parallel-array API preserved for backward compatibility.
 
     Args:
         items: The items to rank.

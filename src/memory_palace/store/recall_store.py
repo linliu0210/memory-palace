@@ -275,3 +275,60 @@ class RecallStore:
             (now, memory_id),
         )
         self._conn.commit()
+
+    # Valid columns for update_field (safety whitelist)
+    _UPDATABLE_FIELDS: frozenset[str] = frozenset(
+        {
+            "content",
+            "memory_type",
+            "tier",
+            "importance",
+            "tags",
+            "room",
+            "user_pinned",
+            "accessed_at",
+            "updated_at",
+            "access_count",
+            "status",
+            "version",
+            "parent_id",
+            "merged_from",
+            "superseded_by",
+            "change_reason",
+            "embedding",
+            "source_hash",
+        }
+    )
+
+    def update_field(self, memory_id: str, field: str, value: object) -> None:
+        """Update a single field on a memory record.
+
+        Eliminates the need for callers to access the database directly.
+        Only columns listed in ``_UPDATABLE_FIELDS`` are accepted.
+
+        Args:
+            memory_id: The memory ID to update.
+            field: Column name to update.
+            value: New value for the field.
+
+        Raises:
+            ValueError: If ``field`` is not in the updatable whitelist.
+
+        Ref: TD-1 — encapsulate field-level mutations inside RecallStore.
+        """
+        if field not in self._UPDATABLE_FIELDS:
+            raise ValueError(
+                f"Field '{field}' is not updatable. Allowed: {sorted(self._UPDATABLE_FIELDS)}"
+            )
+
+        # Serialize list/dict values to JSON for storage
+        if isinstance(value, (list, dict)):
+            value = json.dumps(value)
+        elif isinstance(value, bool):
+            value = int(value)
+
+        self._conn.execute(
+            f"UPDATE memories SET {field} = ? WHERE id = ?",  # noqa: S608
+            (value, memory_id),
+        )
+        self._conn.commit()

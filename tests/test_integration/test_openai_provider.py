@@ -69,7 +69,6 @@ class TestOpenAIProviderErrors:
     @pytest.mark.asyncio
     async def test_non_200_maps_to_runtime_error(self):
         """Non-200 API response → RuntimeError (strict)."""
-        import httpx
 
         provider = OpenAIProvider(ModelConfig(), timeout=1.0)
 

@@ -15,6 +15,8 @@ import yaml
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
+from memory_palace.foundation.embedding import EmbeddingConfig
+
 
 class LLMConfig(BaseModel):
     """LLM backend selection."""
@@ -45,11 +47,15 @@ class RoomConfig(BaseModel):
 
 
 class ScoringConfig(BaseModel):
-    """Three-factor scoring weights (must sum to ~1.0)."""
+    """Four-factor scoring weights (must sum to ~1.0).
 
-    recency: float = 0.25
-    importance: float = 0.25
+    v0.2: Added room_bonus weight for room-matching bonus.
+    """
+
+    recency: float = 0.20
+    importance: float = 0.20
     relevance: float = 0.50
+    room_bonus: float = 0.10
 
 
 class CuratorTrigger(BaseModel):
@@ -95,6 +101,7 @@ class Config(BaseSettings):
     model_config = {"env_prefix": "MP_", "env_nested_delimiter": "__"}
 
     llm: LLMConfig = LLMConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
     storage: StorageConfig = StorageConfig()
     core: CoreConfig = CoreConfig()
     rooms: list[RoomConfig] = [

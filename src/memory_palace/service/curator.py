@@ -1,16 +1,16 @@
 """CuratorService — 搬运小人 (Memory Curator Agent).
 
-Orchestrates: Gather → Extract → Reconcile → Execute → Report.
-v0.1: synchronous trigger, manually invoked.
+v0.2: Delegates run() to CuratorGraph (pure Python state machine).
+Preserves should_trigger() interface from v0.1.
 
-Ref: SPEC v2.0 §4.1 S-15, §4.3, §4.4
+Ref: SPEC v2.0 §4.1 S-15, §4.3, §4.4, SPEC_V02 §2.4
 """
 
 from __future__ import annotations
 
-import time
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -18,7 +18,12 @@ from memory_palace.engine.fact_extractor import FactExtractor
 from memory_palace.engine.reconcile import ReconcileEngine
 from memory_palace.foundation.llm import LLMProvider
 from memory_palace.models.curator import CuratorReport
+from memory_palace.service.curator_graph import CuratorGraph
+from memory_palace.store.core_store import CoreStore
 from memory_palace.store.recall_store import RecallStore
+
+if TYPE_CHECKING:
+    from memory_palace.config import RoomConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -31,27 +36,39 @@ DEFAULT_COOLDOWN_HOURS = 1
 class CuratorService:
     """Memory Curator: automated memory maintenance agent.
 
-    Gathers recent items, extracts facts, reconciles with existing
-    memories, executes decisions (ADD/UPDATE/DELETE/NOOP), and
-    generates a CuratorReport.
+    v0.2: run() delegates to CuratorGraph (pure Python state machine)
+    for the full pipeline: Gather → Extract → Reconcile → Reflect →
+    Prune → HealthCheck → Report.
 
     Args:
         data_dir: Root data directory.
         llm: LLM provider for fact extraction and reconciliation.
+        rooms_config: Room definitions for health coverage calculation.
     """
 
-    def __init__(self, data_dir: Path, llm: LLMProvider) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        llm: LLMProvider,
+        rooms_config: list[RoomConfig] | None = None,
+    ) -> None:
         self._data_dir = data_dir
+        self._llm = llm
+        self._rooms_config = rooms_config or []
+
+        # Stores
         self._recall_store = RecallStore(data_dir)
+        self._core_store = CoreStore(data_dir)
+
+        # Engines
         self._fact_extractor = FactExtractor(llm)
         self._reconcile_engine = ReconcileEngine(llm)
-        self._llm = llm
 
         # Track run history for trigger logic
         self._last_run_at: datetime | None = None
         self._session_count: int = 0
 
-        # Lazy import to avoid circular dependency
+        # Lazy init for MemoryService (circular dep avoidance)
         self._memory_service: object | None = None
 
     def _get_memory_service(self) -> object:
@@ -63,14 +80,9 @@ class CuratorService:
         return self._memory_service
 
     async def run(self, since: datetime | None = None) -> CuratorReport:
-        """Execute one curation cycle.
+        """Execute one curation cycle via CuratorGraph.
 
-        Workflow:
-        1. Gather: get recent items from RecallStore.
-        2. Extract: run FactExtractor on recent item contents.
-        3. Reconcile: for each new fact, run ReconcileEngine.
-        4. Execute: apply decisions (ADD/UPDATE/DELETE/NOOP).
-        5. Report: return CuratorReport with metrics.
+        v0.2: Delegates to CuratorGraph (pure Python state machine).
 
         Args:
             since: Optional cutoff datetime. If None, uses last 20 items.
@@ -78,84 +90,20 @@ class CuratorService:
         Returns:
             CuratorReport with all metrics populated.
         """
-        start_time = time.time()
         ms = self._get_memory_service()
 
-        report = CuratorReport(
-            triggered_at=datetime.now(),
-            trigger_reason="manual",
+        graph = CuratorGraph(
+            memory_service=ms,
+            recall_store=self._recall_store,
+            core_store=self._core_store,
+            fact_extractor=self._fact_extractor,
+            reconcile_engine=self._reconcile_engine,
+            llm=self._llm,
+            rooms_config=self._rooms_config,
         )
 
-        errors: list[str] = []
+        report = await graph.run(since=since)
 
-        # 1. Gather — get recent items
-        recent_items = self._recall_store.get_recent(20)
-        if not recent_items:
-            report.duration_seconds = time.time() - start_time
-            self._last_run_at = datetime.now()
-            return report
-
-        # 2. Extract — combine content and extract facts
-        combined_text = "\n".join(item.content for item in recent_items)
-        try:
-            new_facts = await self._fact_extractor.extract(combined_text)
-        except Exception as exc:
-            errors.append(f"FactExtractor error: {exc}")
-            report.errors = errors
-            report.duration_seconds = time.time() - start_time
-            self._last_run_at = datetime.now()
-            return report
-
-        report.facts_extracted = len(new_facts)
-
-        # Get existing items for reconciliation
-        existing_items = self._recall_store.get_recent(50)
-
-        # 3. Reconcile + 4. Execute — process each fact
-        for fact in new_facts:
-            try:
-                decision = await self._reconcile_engine.reconcile(fact.content, existing_items)
-            except (ValueError, Exception) as exc:
-                errors.append(f"Reconcile error for '{fact.content[:50]}': {exc}")
-                continue
-
-            action = decision["action"]
-            target_id = decision.get("target_id")
-            reason = decision.get("reason", "curator decision")
-
-            try:
-                if action == "ADD":
-                    ms.save(
-                        content=fact.content,
-                        importance=fact.importance,
-                        tags=fact.tags,
-                    )
-                    report.memories_created += 1
-                    # MemoryService.save() already writes AuditEntry(CREATE)
-                    # DO NOT write duplicate audit here
-
-                elif action == "UPDATE" and target_id:
-                    ms.update(target_id, fact.content, reason)
-                    report.memories_updated += 1
-
-                elif action == "DELETE" and target_id:
-                    ms.forget(target_id, reason)
-                    report.memories_pruned += 1
-
-                # NOOP — do nothing
-
-            except Exception as exc:
-                errors.append(f"Execute error ({action}): {exc}")
-                logger.warning(
-                    "Curator execute failed, skipping",
-                    action=action,
-                    target_id=target_id,
-                    error=str(exc),
-                )
-                continue
-
-        report.errors = errors
-        report.duration_seconds = time.time() - start_time
         self._last_run_at = datetime.now()
         self._session_count = 0  # Reset after run
 
@@ -165,6 +113,7 @@ class CuratorService:
             created=report.memories_created,
             updated=report.memories_updated,
             pruned=report.memories_pruned,
+            reflections=report.reflections_generated,
             duration_s=report.duration_seconds,
         )
 
