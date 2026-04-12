@@ -196,3 +196,32 @@ class TestRecallStoreUpdate:
         assert item_after.access_count == 1
         # Reason: accessed_at should be updated to a newer timestamp
         assert item_after.accessed_at >= item_before.accessed_at
+
+
+class TestRecallStoreUpdateField:
+    """RecallStore.update_field — TD-1 resolution."""
+
+    def test_update_field_changes_value(self, tmp_data_dir):
+        """update_field(id, 'importance', 0.9) updates the field."""
+        store = RecallStore(tmp_data_dir)
+        store.insert(_make_item(item_id="uf-1", importance=0.5))
+        store.update_field("uf-1", "importance", 0.9)
+        item = store.get("uf-1")
+        assert item is not None
+        assert item.importance == 0.9
+
+    def test_update_field_rejects_invalid_field(self, tmp_data_dir):
+        """update_field(id, 'id', ...) should raise ValueError."""
+        store = RecallStore(tmp_data_dir)
+        store.insert(_make_item(item_id="uf-2"))
+        with pytest.raises(ValueError, match="not updatable"):
+            store.update_field("uf-2", "id", "new-id")
+
+    def test_update_field_serializes_list(self, tmp_data_dir):
+        """update_field with list value should JSON-serialize it."""
+        store = RecallStore(tmp_data_dir)
+        store.insert(_make_item(item_id="uf-3"))
+        store.update_field("uf-3", "tags", ["updated", "tags"])
+        item = store.get("uf-3")
+        assert item is not None
+        assert item.tags == ["updated", "tags"]
