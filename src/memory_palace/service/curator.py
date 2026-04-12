@@ -31,6 +31,7 @@ logger = structlog.get_logger(__name__)
 DEFAULT_SESSION_THRESHOLD = 20
 DEFAULT_TIMER_HOURS = 24
 DEFAULT_COOLDOWN_HOURS = 1
+DEFAULT_IMPORTANCE_SUM = 5.0
 
 
 class CuratorService:
@@ -67,6 +68,7 @@ class CuratorService:
         # Track run history for trigger logic
         self._last_run_at: datetime | None = None
         self._session_count: int = 0
+        self._importance_sum: float = 0.0
 
         # Lazy init for MemoryService (circular dep avoidance)
         self._memory_service: object | None = None
@@ -106,6 +108,7 @@ class CuratorService:
 
         self._last_run_at = datetime.now()
         self._session_count = 0  # Reset after run
+        self._importance_sum = 0.0  # Reset importance accumulator
 
         logger.info(
             "Curator run complete",
@@ -119,12 +122,30 @@ class CuratorService:
 
         return report
 
+    def increment_session(self) -> None:
+        """Increment session count for trigger tracking.
+
+        Called by MemoryService after each save operation.
+        """
+        self._session_count += 1
+
+    def record_importance(self, value: float) -> None:
+        """Accumulate importance value for trigger tracking.
+
+        Called by MemoryService after each save operation.
+
+        Args:
+            value: The importance score of the saved memory.
+        """
+        self._importance_sum += value
+
     def should_trigger(self) -> tuple[bool, str]:
         """Check whether curation should be triggered.
 
         Conditions (any one triggers):
         - session_count >= threshold (default 20)
         - hours since last run >= timer_hours (default 24)
+        - importance_sum >= threshold (default 5.0)
 
         Cooldown: will NOT trigger if last run was < cooldown_hours ago.
 
@@ -142,6 +163,10 @@ class CuratorService:
         # Session count trigger
         if self._session_count >= DEFAULT_SESSION_THRESHOLD:
             return (True, "session_count")
+
+        # Importance sum trigger
+        if self._importance_sum >= DEFAULT_IMPORTANCE_SUM:
+            return (True, "importance_sum")
 
         # Timer trigger
         if self._last_run_at is not None:

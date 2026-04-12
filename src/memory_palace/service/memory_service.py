@@ -34,6 +34,8 @@ from memory_palace.store.recall_store import RecallStore
 
 if TYPE_CHECKING:
     from memory_palace.foundation.embedding import EmbeddingProvider
+    from memory_palace.service.curator import CuratorService
+    from memory_palace.service.scheduler import SleepTimeScheduler
     from memory_palace.store.archival_store import ArchivalStore
 
 logger = structlog.get_logger(__name__)
@@ -75,6 +77,18 @@ class MemoryService:
             self._fact_extractor = FactExtractor(llm)
         else:
             self._fact_extractor = None
+
+        # Optional scheduler and curator integration (R14)
+        self._scheduler: SleepTimeScheduler | None = None
+        self._curator: CuratorService | None = None
+
+    def set_scheduler(self, scheduler: SleepTimeScheduler) -> None:
+        """Inject optional SleepTimeScheduler for background curation.
+
+        Args:
+            scheduler: The scheduler instance to notify on save operations.
+        """
+        self._scheduler = scheduler
 
     def save(
         self,
@@ -159,6 +173,14 @@ class MemoryService:
         )
 
         logger.info("Memory saved", memory_id=item.id, tier=tier, room=room)
+
+        # R14: Notify scheduler and update curator tracking
+        if self._curator is not None:
+            self._curator.increment_session()
+            self._curator.record_importance(importance)
+        if self._scheduler is not None:
+            self._scheduler.notify("save")
+
         return item
 
     async def save_batch(self, texts: list[str]) -> list[MemoryItem]:

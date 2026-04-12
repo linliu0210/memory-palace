@@ -64,6 +64,7 @@ class CuratorTrigger(BaseModel):
     timer_hours: int = 24
     session_count: int = 20
     cooldown_hours: int = 1
+    importance_sum: float = 5.0
 
 
 class CuratorConfig(BaseModel):
