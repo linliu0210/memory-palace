@@ -12,7 +12,7 @@ from datetime import datetime
 
 import structlog
 
-from memory_palace.engine.scoring import normalize_bm25, rank
+from memory_palace.engine.scoring import normalize_bm25, rank_legacy
 from memory_palace.models.memory import MemoryItem
 from memory_palace.store.recall_store import RecallStore
 
@@ -98,7 +98,7 @@ class Retriever:
         relevances = [normalize_bm25(r["rank"], all_ranks) for r in results]
 
         # Rank using scoring engine
-        ranked = rank(items, recency_hours, importances, relevances)
+        ranked = rank_legacy(items, recency_hours, importances, relevances)
 
         # Truncate to top_k
         ranked = ranked[:top_k]

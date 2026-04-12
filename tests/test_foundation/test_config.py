@@ -30,7 +30,14 @@ class TestConfigDefaults:
         assert cfg.storage.base_dir == "./data"
         assert cfg.core.max_bytes == 2048
         assert (
-            abs(cfg.scoring.recency + cfg.scoring.importance + cfg.scoring.relevance - 1.0) < 0.01
+            abs(
+                cfg.scoring.recency
+                + cfg.scoring.importance
+                + cfg.scoring.relevance
+                + cfg.scoring.room_bonus
+                - 1.0
+            )
+            < 0.01
         )
 
     def test_default_rooms_include_five_standard(self):
@@ -40,11 +47,12 @@ class TestConfigDefaults:
         assert room_names == ["general", "preferences", "projects", "people", "skills"]
 
     def test_default_scoring_weights(self):
-        """v0.1 weights: recency=0.25, importance=0.25, relevance=0.50."""
+        """v0.2 weights: recency=0.20, importance=0.20, relevance=0.50, room_bonus=0.10."""
         cfg = Config()
-        assert cfg.scoring.recency == 0.25
-        assert cfg.scoring.importance == 0.25
+        assert cfg.scoring.recency == 0.20
+        assert cfg.scoring.importance == 0.20
         assert cfg.scoring.relevance == 0.50
+        assert cfg.scoring.room_bonus == 0.10
 
     def test_default_curator_trigger_values(self):
         """timer_hours=24, session_count=20, cooldown_hours=1."""
