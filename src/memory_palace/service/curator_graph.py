@@ -30,13 +30,14 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from memory_palace.engine.ebbinghaus import should_prune as ebbinghaus_should_prune
 from memory_palace.engine.health import MemoryHealthScore, compute_health
 from memory_palace.engine.reflection import ReflectionEngine, should_reflect
 from memory_palace.models.curator import CuratorReport
 from memory_palace.models.memory import MemoryItem, MemoryStatus
 
 if TYPE_CHECKING:
-    from memory_palace.config import RoomConfig
+    from memory_palace.config import EbbinghausConfig, RoomConfig
     from memory_palace.engine.fact_extractor import FactExtractor
     from memory_palace.engine.reconcile import ReconcileEngine
     from memory_palace.foundation.llm import LLMProvider
@@ -89,6 +90,7 @@ class CuratorState:
         self.memories_updated: int = 0
         self.memories_pruned: int = 0
         self.reflections_generated: int = 0
+        self.ebbinghaus_pruned: int = 0
 
 
 # ── CuratorGraph (State Machine) ───────────────────────────
@@ -120,6 +122,7 @@ class CuratorGraph:
         reconcile_engine: ReconcileEngine,
         llm: LLMProvider,
         rooms_config: list[RoomConfig] | None = None,
+        ebbinghaus_config: EbbinghausConfig | None = None,
     ) -> None:
         self._ms = memory_service
         self._recall_store = recall_store
@@ -128,6 +131,7 @@ class CuratorGraph:
         self._reconcile_engine = reconcile_engine
         self._reflection_engine = ReflectionEngine(llm)
         self._rooms_config = rooms_config or []
+        self._ebbinghaus_config = ebbinghaus_config
 
     async def run(self, since: datetime | None = None) -> CuratorReport:
         """Execute the full Curator pipeline.
@@ -264,16 +268,41 @@ class CuratorGraph:
         return CuratorPhase.PRUNE
 
     async def _prune(self, state: CuratorState) -> CuratorPhase:
-        """Prune low-importance decayed memories.
+        """Prune memories using Ebbinghaus decay or simple threshold.
 
-        Items with importance < 0.05 and status ACTIVE are candidates.
+        When ebbinghaus is enabled (default), uses the forgetting curve
+        to compute effective importance based on access_count and time
+        since last access. Otherwise falls back to simple importance < 0.05.
         """
         candidates = self._recall_store.get_recent(100)
+        eb_cfg = self._ebbinghaus_config
+        use_ebbinghaus = eb_cfg is not None and eb_cfg.enabled
+
         for item in candidates:
-            if item.importance < 0.05 and item.status == MemoryStatus.ACTIVE:
-                self._recall_store.update_status(item.id, MemoryStatus.PRUNED)
-                state.pruned_ids.append(item.id)
-                state.memories_pruned += 1
+            if item.status != MemoryStatus.ACTIVE:
+                continue
+
+            if use_ebbinghaus:
+                now = datetime.now()
+                hours_since = (now - item.accessed_at).total_seconds() / 3600.0
+                if ebbinghaus_should_prune(
+                    importance=item.importance,
+                    hours_since_access=hours_since,
+                    access_count=item.access_count,
+                    threshold=eb_cfg.prune_threshold,
+                    base_stability=eb_cfg.base_stability_hours,
+                ):
+                    self._recall_store.update_status(item.id, MemoryStatus.PRUNED)
+                    state.pruned_ids.append(item.id)
+                    state.memories_pruned += 1
+                    state.ebbinghaus_pruned += 1
+            else:
+                # Legacy simple threshold
+                if item.importance < 0.05:
+                    self._recall_store.update_status(item.id, MemoryStatus.PRUNED)
+                    state.pruned_ids.append(item.id)
+                    state.memories_pruned += 1
+
         return CuratorPhase.HEALTH_CHECK
 
     def _health_check(self, state: CuratorState) -> CuratorPhase:

@@ -74,6 +74,18 @@ class CuratorConfig(BaseModel):
     prune_threshold: float = 0.05
 
 
+class EbbinghausConfig(BaseModel):
+    """Ebbinghaus forgetting curve parameters.
+
+    Controls the decay model used for memory retention scoring
+    and pruning decisions.
+    """
+
+    enabled: bool = True
+    base_stability_hours: float = 168.0  # 1 week
+    prune_threshold: float = 0.05
+
+
 class _YamlSettingsSource(PydanticBaseSettingsSource):
     """Custom settings source that reads from a YAML file.
 
@@ -114,6 +126,7 @@ class Config(BaseSettings):
     ]
     scoring: ScoringConfig = ScoringConfig()
     curator: CuratorConfig = CuratorConfig()
+    ebbinghaus: EbbinghausConfig = EbbinghausConfig()
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
