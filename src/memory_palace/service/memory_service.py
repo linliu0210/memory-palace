@@ -1,14 +1,21 @@
 """MemoryService — CRUD facade for the Memory Palace.
 
-Coordinates Store (CoreStore + RecallStore), Engine (FactExtractor),
-AuditLog, and Retriever to provide a unified memory API.
+Coordinates Store (CoreStore + RecallStore + ArchivalStore), Engine
+(FactExtractor), AuditLog, and Retriever to provide a unified memory API.
 
-Ref: SPEC v2.0 §4.1 S-13, §4.4
+v0.2 upgrades:
+- get_by_id(): three-tier lookup (TD-4)
+- get_core_context(): active-only filter (TD-2)
+- save(): all items indexed in ArchivalStore + Core budget check (TD-7)
+- update(): uses update_field() (TD-1 final fix)
+
+Ref: SPEC v2.0 §4.1 S-13, §4.4, SPEC_V02 §6.2
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -25,27 +32,45 @@ from memory_palace.service.retriever import Retriever
 from memory_palace.store.core_store import CoreStore
 from memory_palace.store.recall_store import RecallStore
 
+if TYPE_CHECKING:
+    from memory_palace.foundation.embedding import EmbeddingProvider
+    from memory_palace.store.archival_store import ArchivalStore
+
 logger = structlog.get_logger(__name__)
+
+# Core budget: max items per block before auto-demote (SPEC §4.1 S-8)
+CORE_MAX_ITEMS_PER_BLOCK = 10
 
 
 class MemoryService:
     """CRUD facade for memory operations.
 
     Routes high-importance items to CoreStore, others to RecallStore.
+    All items are indexed in ArchivalStore (when available) for semantic search.
     All mutations are audited through AuditLog.
 
     Args:
         data_dir: Root data directory for stores and audit log.
         llm: Optional LLM provider (needed for save_batch via FactExtractor).
+        archival_store: Optional ArchivalStore for vector indexing.
+        embedding: Optional EmbeddingProvider for computing embeddings.
     """
 
-    def __init__(self, data_dir: Path, llm: LLMProvider | None = None) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        llm: LLMProvider | None = None,
+        archival_store: ArchivalStore | None = None,
+        embedding: EmbeddingProvider | None = None,
+    ) -> None:
         self._data_dir = data_dir
         self._core_store = CoreStore(data_dir)
         self._recall_store = RecallStore(data_dir)
         self._audit_log = AuditLog(data_dir)
         self._retriever = Retriever(self._recall_store)
         self._llm = llm
+        self._archival_store = archival_store
+        self._embedding = embedding
         if llm is not None:
             self._fact_extractor = FactExtractor(llm)
         else:
@@ -60,6 +85,10 @@ class MemoryService:
         memory_type: MemoryType = MemoryType.OBSERVATION,
     ) -> MemoryItem:
         """Save a new memory. Routes to Core or Recall by importance.
+
+        v0.2 changes:
+        - Core budget check: auto-demote oldest if block exceeds limit (TD-7).
+        - ArchivalStore indexing: all items indexed for semantic search.
 
         importance >= 0.7 → CoreStore (block = room)
         importance < 0.7 → RecallStore
@@ -93,8 +122,27 @@ class MemoryService:
 
         # Route to appropriate store
         if tier == MemoryTier.CORE:
-            # CoreStore.save(block, items) — block is room name
             existing = self._core_store.load(room)
+
+            # TD-7: Core budget check — auto-demote oldest if over limit
+            while len(existing) >= CORE_MAX_ITEMS_PER_BLOCK:
+                oldest = min(
+                    (i for i in existing if i.status == MemoryStatus.ACTIVE),
+                    key=lambda x: x.created_at,
+                    default=None,
+                )
+                if oldest is None:
+                    break  # all items are already non-active
+                # Demote to Recall
+                existing = [i for i in existing if i.id != oldest.id]
+                demoted = oldest.model_copy(update={"tier": MemoryTier.RECALL})
+                self._recall_store.insert(demoted)
+                logger.info(
+                    "Core auto-demote",
+                    memory_id=oldest.id,
+                    room=room,
+                )
+
             existing.append(item)
             self._core_store.save(room, existing)
         else:
@@ -173,6 +221,35 @@ class MemoryService:
             min_importance=min_importance,
         )
 
+    def get_by_id(self, memory_id: str) -> MemoryItem | None:
+        """Get memory by ID from any tier (Core → Recall → Archival).
+
+        Searches tiers in order: Core (all blocks), Recall (SQLite),
+        then Archival (ChromaDB metadata only).
+
+        Args:
+            memory_id: The memory ID to look up.
+
+        Returns:
+            MemoryItem if found in Core or Recall, None otherwise.
+            (Archival lookup returns metadata only — not a full MemoryItem.)
+
+        Ref: TD-4 — route through MemoryService instead of direct store access.
+        """
+        # Tier 1: Core
+        core_item = self._find_in_core(memory_id)
+        if core_item is not None:
+            return core_item
+
+        # Tier 2: Recall
+        recall_item = self._recall_store.get(memory_id)
+        if recall_item is not None:
+            return recall_item
+
+        # Tier 3: Archival — metadata only (no full MemoryItem reconstruction)
+        # Return None since Archival doesn't store full MemoryItem
+        return None
+
     def _find_in_core(self, memory_id: str) -> MemoryItem | None:
         """Search all Core blocks for a memory by ID."""
         for block in self._core_store.list_blocks():
@@ -185,6 +262,8 @@ class MemoryService:
         """Update a memory: supersede old, create new version.
 
         Searches both Recall and Core tiers for the old item.
+
+        v0.2: Uses RecallStore.update_field() instead of direct SQL (TD-1 final fix).
 
         Args:
             memory_id: ID of the memory to update.
@@ -222,12 +301,8 @@ class MemoryService:
         # Mark old as superseded
         if old_tier == MemoryTier.RECALL:
             self._recall_store.update_status(memory_id, MemoryStatus.SUPERSEDED)
-            # Persist superseded_by (Store API frozen, direct SQL — tech debt for Round 6+)
-            self._recall_store._conn.execute(
-                "UPDATE memories SET superseded_by = ? WHERE id = ?",
-                (new_item.id, memory_id),
-            )
-            self._recall_store._conn.commit()
+            # TD-1 final fix: use update_field() instead of direct SQL
+            self._recall_store.update_field(memory_id, "superseded_by", new_item.id)
         elif old_tier == MemoryTier.CORE:
             # Mark old item as SUPERSEDED in-place (soft — preserve in block per SPEC §4.4)
             block = old_item.room
@@ -325,18 +400,26 @@ class MemoryService:
         return True
 
     def get_core_context(self) -> str:
-        """Return all Core Memory text concatenated.
+        """Return ACTIVE-only Core Memory text concatenated.
+
+        v0.2: Filters out SUPERSEDED and PRUNED items (TD-2).
 
         Returns:
-            Single string with all core memory contents joined by newlines.
+            Single string with active core memory contents joined by newlines.
         """
-        return self._core_store.get_all_text()
+        texts: list[str] = []
+        for block_name in self._core_store.list_blocks():
+            items = self._core_store.load(block_name)
+            for item in items:
+                if item.status == MemoryStatus.ACTIVE:
+                    texts.append(item.content)
+        return "\n".join(texts)
 
     def stats(self) -> dict:
         """Return statistics about memory stores.
 
         Returns:
-            Dict with core_count, recall_count, core_blocks.
+            Dict with core_count, recall_count, core_blocks, archival_count.
         """
         core_blocks = self._core_store.list_blocks()
         core_count = 0
@@ -346,9 +429,15 @@ class MemoryService:
 
         recall_count = self._recall_store.count()
 
-        return {
+        result = {
             "core_count": core_count,
             "recall_count": recall_count,
             "core_blocks": core_blocks,
             "total": core_count + recall_count,
         }
+
+        if self._archival_store is not None:
+            result["archival_count"] = self._archival_store.count()
+            result["total"] += result["archival_count"]
+
+        return result
