@@ -127,3 +127,48 @@ def tmp_data_dir(tmp_path):
     (tmp_path / "core").mkdir()
     (tmp_path / "archival").mkdir()
     return tmp_path
+
+
+# ============================================================
+# Embedding Mock — Protocol-compatible deterministic substitute
+# ============================================================
+
+
+@dataclass
+class MockEmbedding:
+    """Hash-based deterministic embedding mock.
+
+    Implements EmbeddingProvider Protocol:
+        async def embed(self, texts: list[str]) -> list[list[float]]
+        @property dimension -> int
+
+    Same text always produces the same unit vector — makes tests
+    reproducible without any external API calls.
+    """
+
+    _dimension: int = 8
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._hash_to_vector(t) for t in texts]
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
+
+    def _hash_to_vector(self, text: str) -> list[float]:
+        """Deterministic: same text → same unit vector."""
+        import hashlib
+
+        h = hashlib.sha256(text.encode()).digest()
+        raw = [b / 255.0 for b in h[: self._dimension]]
+        # Normalize to unit vector
+        norm = sum(x * x for x in raw) ** 0.5
+        if norm == 0:
+            return [0.0] * self._dimension
+        return [x / norm for x in raw]
+
+
+@pytest.fixture
+def mock_embedding():
+    """Deterministic hash-based embedding mock (dim=8)."""
+    return MockEmbedding()

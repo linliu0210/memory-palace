@@ -15,6 +15,8 @@ import yaml
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
+from memory_palace.foundation.embedding import EmbeddingConfig
+
 
 class LLMConfig(BaseModel):
     """LLM backend selection."""
@@ -95,6 +97,7 @@ class Config(BaseSettings):
     model_config = {"env_prefix": "MP_", "env_nested_delimiter": "__"}
 
     llm: LLMConfig = LLMConfig()
+    embedding: EmbeddingConfig = EmbeddingConfig()
     storage: StorageConfig = StorageConfig()
     core: CoreConfig = CoreConfig()
     rooms: list[RoomConfig] = [
