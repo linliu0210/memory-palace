@@ -181,3 +181,23 @@ class TestForgetCommand:
         result = runner.invoke(app, ["forget", "bad-id", "--data-dir", data_dir])
         assert result.exit_code == 0
         assert "未找到" in result.stdout
+
+
+# ── [v1.0] Schedule command tests ─────────────────────────────
+
+
+class TestScheduleCommand:
+    """palace schedule — scheduler management CLI."""
+
+    def test_schedule_status_shows_not_running(self):
+        """schedule status → shows not-running message."""
+        result = runner.invoke(app, ["schedule", "status"])
+        assert result.exit_code == 0
+        assert "未运行" in result.stdout
+
+    def test_schedule_help(self):
+        """schedule --help → shows subcommands."""
+        result = runner.invoke(app, ["schedule", "--help"])
+        assert result.exit_code == 0
+        assert "start" in result.stdout
+        assert "status" in result.stdout

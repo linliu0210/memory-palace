@@ -1,7 +1,8 @@
 """CLI — Typer command-line interface for Memory Palace.
 
 Provides ``palace`` commands for all memory operations:
-save, save-batch, search, update, forget, curate, inspect, audit, rooms.
+save, save-batch, search, update, forget, curate, inspect, audit, rooms,
+schedule start, schedule status.
 
 Ref: SPEC v2.0 §4.4, §5.6
 """
@@ -229,7 +230,20 @@ def curate(
         console.print(f"  新增记忆: {report.memories_created}")
         console.print(f"  更新记忆: {report.memories_updated}")
         console.print(f"  淘汰记忆: {report.memories_pruned}")
+        if report.ebbinghaus_pruned:
+            console.print(f"  Ebbinghaus 淘汰: {report.ebbinghaus_pruned}")
         console.print(f"  耗时: {report.duration_seconds:.2f}s")
+
+        # Heartbeat stats (from CuratorService._heartbeat)
+        heartbeat = curator._heartbeat
+        if heartbeat is not None:
+            hb_stats = heartbeat.stats
+            console.print(
+                f"  心跳: steps={hb_stats['steps']}  "
+                f"llm_calls={hb_stats['llm_calls']}  "
+                f"elapsed={hb_stats['elapsed_seconds']:.1f}s"
+            )
+
         if report.errors:
             console.print(f"  [yellow]错误: {len(report.errors)}[/yellow]")
             for err in report.errors:
@@ -378,3 +392,66 @@ def rooms(
     except Exception as exc:
         console.print(f"[red]✗ 获取房间列表失败：{exc}[/red]")
         raise typer.Exit(code=1) from exc
+
+
+# ── Schedule commands ─────────────────────────────────────────────────
+
+schedule_app = typer.Typer(name="schedule", help="Sleep-time 调度管理")
+app.add_typer(schedule_app)
+
+
+@schedule_app.command("start")
+def schedule_start(
+    check_interval: int = typer.Option(300, help="检查间隔(秒)"),
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
+    """启动后台 Sleep-time 调度 (Ctrl+C 停止)。"""
+    try:
+        path = _resolve_data_dir(data_dir)
+        llm = _build_llm_provider(path)
+
+        from memory_palace.service.curator import CuratorService
+        from memory_palace.service.memory_service import MemoryService
+        from memory_palace.service.scheduler import SleepTimeScheduler
+
+        ms = MemoryService(path, llm)
+        curator = CuratorService(path, llm)
+        # Wire up MemoryService ↔ CuratorService ↔ Scheduler
+        ms._curator = curator
+        scheduler = SleepTimeScheduler(curator, check_interval=check_interval)
+        ms.set_scheduler(scheduler)
+
+        console.print(
+            f"[green]✓[/green] Sleep-time 调度启动  interval={check_interval}s  "
+            f"data_dir={path}"
+        )
+        console.print("[dim]按 Ctrl+C 停止调度...[/dim]")
+
+        async def _run() -> None:
+            await scheduler.start()
+            try:
+                # Block until interrupted
+                while scheduler.is_running:
+                    await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                pass
+            finally:
+                await scheduler.stop()
+
+        try:
+            asyncio.run(_run())
+        except KeyboardInterrupt:
+            console.print("\n[yellow]调度已停止[/yellow]")
+
+    except Exception as exc:
+        console.print(f"[red]✗ 调度启动失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@schedule_app.command("status")
+def schedule_status(
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
+    """查看调度器状态。"""
+    # No persistent state file yet — just report not running
+    console.print("[yellow]调度器未运行。使用 `palace schedule start` 启动。[/yellow]")
