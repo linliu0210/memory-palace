@@ -108,7 +108,7 @@ class TestSaveMemoryTool:
         )
         data = result.data
         assert data["success"] is False
-        assert data["code"] == "ValidationError"
+        assert data["code"] == "VALIDATION"
 
 
 class TestSearchMemoryTool:
@@ -124,25 +124,23 @@ class TestSearchMemoryTool:
             "search_memory",
             {"query": "Python"},
         )
-        data = json.loads(result.content[0].text)
-        assert isinstance(data, list)
-        assert len(data) > 0
-        assert "Python" in data[0]["content"]
+        data = result.data
+        assert data["success"] is True
+        items = data["data"]
+        assert isinstance(items, list)
+        assert len(items) > 0
+        assert "Python" in items[0]["content"]
 
     async def test_search_empty_returns_empty_list(self, mcp_client: Client):
-        """Empty database search returns empty list."""
+        """Empty database search returns empty data list."""
         result = await mcp_client.call_tool(
             "search_memory",
             {"query": "不存在的内容"},
         )
-        # Empty list may produce no content or empty JSON array
-        if result.content:
-            data = json.loads(result.content[0].text)
-            assert isinstance(data, list)
-            assert len(data) == 0
-        else:
-            # FastMCP returns no content for empty list — still passes
-            assert result.data is not None
+        data = result.data
+        assert data["success"] is True
+        assert isinstance(data["data"], list)
+        assert len(data["data"]) == 0
 
 
 class TestUpdateMemoryTool:
@@ -198,7 +196,7 @@ class TestForgetMemoryTool:
         )
         data = result.data
         assert data["success"] is False
-        assert data["code"] == "NotFoundError"
+        assert data["code"] == "NOT_FOUND"
 
 
 class TestInspectMemoryTool:
@@ -238,7 +236,7 @@ class TestCurateNowTool:
         result = await mcp_client.call_tool("curate_now", {})
         data = result.data
         assert data["success"] is False
-        assert data["code"] == "LLMNotConfigured"
+        assert data["code"] == "LLM_ERROR"
 
     async def test_curate_with_llm_returns_report(self, mcp_client_with_llm: Client):
         """curate_now with LLM returns CuratorReport dict."""
@@ -257,8 +255,7 @@ class TestReflectNowTool:
         result = await mcp_client_with_llm.call_tool("reflect_now", {})
         data = result.data
         assert data["success"] is True
-        assert data["data"] == []
-        assert "message" in data
+        assert "message" in data["data"]
 
 
 class TestGetHealthTool:

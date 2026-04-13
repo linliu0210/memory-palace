@@ -14,6 +14,7 @@ Ref: SPEC v2.0 §4.1 S-13, §4.4, SPEC_V02 §6.2
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -77,6 +78,9 @@ class MemoryService:
             self._fact_extractor = FactExtractor(llm)
         else:
             self._fact_extractor = None
+
+        # R19: asyncio write lock for concurrency safety
+        self._write_lock = asyncio.Lock()
 
         # Optional scheduler and curator integration (R14)
         self._scheduler: SleepTimeScheduler | None = None
@@ -463,3 +467,32 @@ class MemoryService:
             result["total"] += result["archival_count"]
 
         return result
+
+    # ── R19: Async lock-wrapped methods for MCP concurrency safety ──
+
+    async def async_save(
+        self,
+        content: str,
+        importance: float | None = None,
+        tags: list[str] | None = None,
+        room: str = "general",
+        memory_type: MemoryType = MemoryType.OBSERVATION,
+    ) -> MemoryItem:
+        """Concurrency-safe save. Acquires write lock before delegating to save()."""
+        async with self._write_lock:
+            return self.save(content, importance, tags, room, memory_type)
+
+    async def async_update(
+        self,
+        memory_id: str,
+        new_content: str,
+        reason: str,
+    ) -> MemoryItem:
+        """Concurrency-safe update. Acquires write lock before delegating to update()."""
+        async with self._write_lock:
+            return self.update(memory_id, new_content, reason)
+
+    async def async_forget(self, memory_id: str, reason: str) -> bool:
+        """Concurrency-safe forget. Acquires write lock before delegating to forget()."""
+        async with self._write_lock:
+            return self.forget(memory_id, reason)

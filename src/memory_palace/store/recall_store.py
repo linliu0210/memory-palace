@@ -71,6 +71,8 @@ class RecallStore:
         self._db_path = data_dir / "recall.db"
         self._conn = sqlite3.connect(str(self._db_path))
         self._conn.row_factory = sqlite3.Row
+        # R19: WAL mode for concurrent read support
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._init_schema()
 
     def _init_schema(self) -> None:

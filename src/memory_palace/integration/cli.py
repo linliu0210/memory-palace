@@ -36,6 +36,30 @@ def _resolve_data_dir(data_dir: str) -> Path:
     return path
 
 
+def _resolve_persona_data_dir(
+    persona: str | None, data_dir: str = "~/.memory_palace"
+) -> Path:
+    """Resolve effective data directory: --persona overrides --data-dir."""
+    if persona is None:
+        return _resolve_data_dir(data_dir)
+
+    from memory_palace.config import Config
+    from memory_palace.service.persona_manager import PersonaManager
+
+    base = Path(data_dir).expanduser()
+    yaml_path = base / "memory_palace.yaml"
+    if yaml_path.exists():
+        cfg = Config.from_yaml(yaml_path)
+    else:
+        cfg = Config()
+    mgr = PersonaManager(cfg, config_path=yaml_path)
+    persona_cfg = mgr._find_persona(persona)
+    if persona_cfg is None:
+        console.print(f"[red]✗ Persona '{persona}' 不存在[/red]")
+        raise typer.Exit(code=1)
+    return _resolve_data_dir(persona_cfg.data_dir)
+
+
 def _build_memory_service(data_dir: Path, need_llm: bool = False):
     """Build a MemoryService, optionally with an LLM provider."""
     from memory_palace.service.memory_service import MemoryService
@@ -90,10 +114,11 @@ def save(
     room: str = typer.Option("general", help="房间名"),
     tags: str = typer.Option("", help="标签，逗号分隔"),
     data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
 ) -> None:
     """保存一条记忆。"""
     try:
-        path = _resolve_data_dir(data_dir)
+        path = _resolve_persona_data_dir(persona, data_dir)
         svc = _build_memory_service(path)
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
         item = svc.save(content=content, importance=importance, room=room, tags=tag_list)
@@ -134,10 +159,11 @@ def search(
     top_k: int = typer.Option(5, help="返回条数"),
     room: str = typer.Option(None, help="房间过滤"),
     data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
 ) -> None:
     """搜索记忆。"""
     try:
-        path = _resolve_data_dir(data_dir)
+        path = _resolve_persona_data_dir(persona, data_dir)
         svc = _build_memory_service(path)
         results = svc.search(query=query, top_k=top_k, room=room)
 
@@ -173,10 +199,11 @@ def update(
     new_content: str = typer.Argument(..., help="新内容"),
     reason: str = typer.Option("user update", help="更新原因"),
     data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
 ) -> None:
     """更新一条记忆（版本更新）。"""
     try:
-        path = _resolve_data_dir(data_dir)
+        path = _resolve_persona_data_dir(persona, data_dir)
         svc = _build_memory_service(path)
         new_item = svc.update(memory_id, new_content, reason)
         console.print(
@@ -196,10 +223,11 @@ def forget(
     memory_id: str = typer.Argument(..., help="记忆 ID"),
     reason: str = typer.Option("user request", help="遗忘原因"),
     data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
 ) -> None:
     """软删除一条记忆。"""
     try:
-        path = _resolve_data_dir(data_dir)
+        path = _resolve_persona_data_dir(persona, data_dir)
         svc = _build_memory_service(path)
         success = svc.forget(memory_id, reason)
         if success:
@@ -257,10 +285,11 @@ def curate(
 def inspect(
     memory_id: str = typer.Argument(None, help="记忆 ID（可选，不填则显示概览）"),
     data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
 ) -> None:
     """查看记忆概览或单条详情。"""
     try:
-        path = _resolve_data_dir(data_dir)
+        path = _resolve_persona_data_dir(persona, data_dir)
         svc = _build_memory_service(path)
 
         if memory_id is None:
@@ -394,6 +423,77 @@ def rooms(
         raise typer.Exit(code=1) from exc
 
 
+# ── Import / Export commands ──────────────────────────────────────────
+
+
+@app.command("import")
+def import_cmd(
+    file: str = typer.Argument(..., help="输入文件 (.md 或 .jsonl)"),
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
+    """批量导入记忆."""
+    try:
+        path = _resolve_data_dir(data_dir)
+        svc = _build_memory_service(path)
+
+        from memory_palace.service.batch_io import BatchImporter
+
+        importer = BatchImporter(svc)
+        file_path = Path(file).expanduser()
+
+        if file_path.suffix == ".jsonl":
+            report = asyncio.run(importer.import_jsonl(file_path))
+        else:
+            report = asyncio.run(importer.import_markdown(file_path))
+
+        console.print("[green]✓[/green] 导入完成")
+        console.print(
+            f"  发现: {report.total_found}  导入: {report.imported}"
+            f"  跳过: {report.skipped}"
+        )
+        console.print(f"  耗时: {report.duration_seconds:.2f}s")
+        if report.errors:
+            console.print(f"  [yellow]错误: {len(report.errors)}[/yellow]")
+            for err in report.errors:
+                console.print(f"    ⚠ {err}")
+    except FileNotFoundError as exc:
+        console.print(f"[red]✗ 文件不存在：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        console.print(f"[red]✗ 导入失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("export")
+def export_cmd(
+    output: str = typer.Argument(..., help="输出路径 (目录=Markdown, 文件=JSONL)"),
+    format: str = typer.Option("markdown", help="格式: markdown | jsonl"),
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
+    """批量导出记忆."""
+    try:
+        path = _resolve_data_dir(data_dir)
+        svc = _build_memory_service(path)
+
+        from memory_palace.service.batch_io import BatchExporter
+
+        exporter = BatchExporter(svc)
+        output_path = Path(output).expanduser()
+
+        if format == "jsonl":
+            report = exporter.export_jsonl(output_path)
+        else:
+            report = exporter.export_markdown(output_path)
+
+        console.print("[green]✓[/green] 导出完成")
+        console.print(f"  导出: {report.total_exported} 条记忆")
+        console.print(f"  路径: {report.output_path}")
+        console.print(f"  耗时: {report.duration_seconds:.2f}s")
+    except Exception as exc:
+        console.print(f"[red]✗ 导出失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
 # ── Schedule commands ─────────────────────────────────────────────────
 
 schedule_app = typer.Typer(name="schedule", help="Sleep-time 调度管理")
@@ -455,3 +555,150 @@ def schedule_status(
     """查看调度器状态。"""
     # No persistent state file yet — just report not running
     console.print("[yellow]调度器未运行。使用 `palace schedule start` 启动。[/yellow]")
+
+# ── Persona commands ──────────────────────────────────────────────────
+
+persona_app = typer.Typer(name="persona", help="Persona 多角色管理")
+app.add_typer(persona_app)
+
+
+@persona_app.command("list")
+def persona_list(
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
+    """列出所有 persona。"""
+    try:
+        from memory_palace.config import Config
+        from memory_palace.service.persona_manager import PersonaManager
+
+        base = Path(data_dir).expanduser()
+        yaml_path = base / "memory_palace.yaml"
+        cfg = Config.from_yaml(yaml_path) if yaml_path.exists() else Config()
+        mgr = PersonaManager(cfg)
+
+        table = Table(title="Persona 列表")
+        table.add_column("名称", style="bold cyan")
+        table.add_column("数据目录")
+        table.add_column("描述")
+        table.add_column("状态")
+
+        for p in mgr.list_personas():
+            status = "✓ active" if p.name == cfg.active_persona else ""
+            table.add_row(p.name, p.data_dir, p.description, status)
+
+        console.print(table)
+    except Exception as exc:
+        console.print(f"[red]✗ 获取 persona 列表失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@persona_app.command("create")
+def persona_create(
+    name: str = typer.Option(..., help="Persona 名称"),
+    dir: str = typer.Option(..., help="数据目录"),
+    desc: str = typer.Option("", help="描述"),
+    data_dir: str = typer.Option("~/.memory_palace", help="配置所在数据目录"),
+) -> None:
+    """创建新 persona。"""
+    try:
+        from memory_palace.config import Config
+        from memory_palace.service.persona_manager import PersonaManager
+
+        base = Path(data_dir).expanduser()
+        yaml_path = base / "memory_palace.yaml"
+        cfg = Config.from_yaml(yaml_path) if yaml_path.exists() else Config()
+        mgr = PersonaManager(cfg, config_path=yaml_path)
+
+        persona = mgr.create(name, dir, desc)
+        console.print(
+            f"[green]✓[/green] Persona 已创建  "
+            f"name={persona.name}  data_dir={persona.data_dir}"
+        )
+    except ValueError as exc:
+        console.print(f"[red]✗ 创建失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        console.print(f"[red]✗ 创建失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@persona_app.command("switch")
+def persona_switch(
+    name: str = typer.Option(..., help="要切换到的 persona 名称"),
+    data_dir: str = typer.Option("~/.memory_palace", help="配置所在数据目录"),
+) -> None:
+    """切换 active persona。"""
+    try:
+        from memory_palace.config import Config
+        from memory_palace.service.persona_manager import PersonaManager
+
+        base = Path(data_dir).expanduser()
+        yaml_path = base / "memory_palace.yaml"
+        cfg = Config.from_yaml(yaml_path) if yaml_path.exists() else Config()
+        mgr = PersonaManager(cfg, config_path=yaml_path)
+
+        persona = mgr.switch(name)
+        console.print(f"[green]✓[/green] 已切换到 persona: {persona.name}")
+    except ValueError as exc:
+        console.print(f"[red]✗ 切换失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        console.print(f"[red]✗ 切换失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@persona_app.command("delete")
+def persona_delete(
+    name: str = typer.Option(..., help="要删除的 persona 名称"),
+    data_dir: str = typer.Option("~/.memory_palace", help="配置所在数据目录"),
+) -> None:
+    """删除 persona（不能删除 default 或 active）。"""
+    try:
+        from memory_palace.config import Config
+        from memory_palace.service.persona_manager import PersonaManager
+
+        base = Path(data_dir).expanduser()
+        yaml_path = base / "memory_palace.yaml"
+        cfg = Config.from_yaml(yaml_path) if yaml_path.exists() else Config()
+        mgr = PersonaManager(cfg, config_path=yaml_path)
+
+        mgr.delete(name)
+        console.print(f"[green]✓[/green] Persona '{name}' 已删除")
+    except ValueError as exc:
+        console.print(f"[red]✗ 删除失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        console.print(f"[red]✗ 删除失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+# ── MCP Server command ────────────────────────────────────────────────
+
+
+@app.command()
+def serve(
+    transport: str = typer.Option("stdio", help="传输协议: stdio | http"),
+    host: str = typer.Option("localhost", help="HTTP 主机"),
+    port: int = typer.Option(8765, help="HTTP 端口"),
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+) -> None:
+    """启动 Memory Palace MCP Server."""
+    try:
+        path = _resolve_data_dir(data_dir)
+
+        from memory_palace.integration.mcp_context import MCPServiceManager
+        from memory_palace.integration.mcp_server import mcp
+
+        MCPServiceManager.configure(path)
+
+        console.print(
+            f"[green]✓[/green] MCP Server 启动  transport={transport}  data_dir={path}"
+        )
+
+        if transport == "http":
+            mcp.run(transport="streamable-http", host=host, port=port)
+        else:
+            mcp.run(transport="stdio")
+    except Exception as exc:
+        console.print(f"[red]✗ MCP Server 启动失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc

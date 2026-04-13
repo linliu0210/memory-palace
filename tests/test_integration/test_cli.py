@@ -201,3 +201,18 @@ class TestScheduleCommand:
         assert result.exit_code == 0
         assert "start" in result.stdout
         assert "status" in result.stdout
+
+
+# ── [R20] Serve command tests ─────────────────────────────────
+
+
+class TestServeCommand:
+    """palace serve — MCP server launch CLI."""
+
+    def test_serve_help(self):
+        """serve --help → shows transport/host/port options."""
+        result = runner.invoke(app, ["serve", "--help"])
+        assert result.exit_code == 0
+        assert "transport" in result.stdout
+        assert "host" in result.stdout
+        assert "port" in result.stdout

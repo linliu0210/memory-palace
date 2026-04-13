@@ -74,6 +74,18 @@ class CuratorConfig(BaseModel):
     prune_threshold: float = 0.05
 
 
+class PersonaConfig(BaseModel):
+    """A named persona with its own data directory.
+
+    Each persona gets an independent data_dir containing Core, Recall,
+    Archival, and Audit data — fully isolated from other personas.
+    """
+
+    name: str
+    data_dir: str  # relative or absolute path, ~ expansion supported
+    description: str = ""
+
+
 class EbbinghausConfig(BaseModel):
     """Ebbinghaus forgetting curve parameters.
 
@@ -127,6 +139,12 @@ class Config(BaseSettings):
     scoring: ScoringConfig = ScoringConfig()
     curator: CuratorConfig = CuratorConfig()
     ebbinghaus: EbbinghausConfig = EbbinghausConfig()
+    personas: list[PersonaConfig] = [
+        PersonaConfig(
+            name="default", data_dir="~/.memory_palace", description="默认 persona"
+        )
+    ]
+    active_persona: str = "default"
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:
