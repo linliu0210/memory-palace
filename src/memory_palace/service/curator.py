@@ -19,6 +19,7 @@ from memory_palace.engine.reconcile import ReconcileEngine
 from memory_palace.foundation.llm import LLMProvider
 from memory_palace.models.curator import CuratorReport
 from memory_palace.service.curator_graph import CuratorGraph
+from memory_palace.service.heartbeat import HeartbeatController
 from memory_palace.store.core_store import CoreStore
 from memory_palace.store.recall_store import RecallStore
 
@@ -70,6 +71,9 @@ class CuratorService:
         self._session_count: int = 0
         self._importance_sum: float = 0.0
 
+        # Safety guard — HeartbeatController (R16)
+        self._heartbeat = HeartbeatController()
+
         # Lazy init for MemoryService (circular dep avoidance)
         self._memory_service: object | None = None
 
@@ -102,6 +106,7 @@ class CuratorService:
             reconcile_engine=self._reconcile_engine,
             llm=self._llm,
             rooms_config=self._rooms_config,
+            heartbeat=self._heartbeat,
         )
 
         report = await graph.run(since=since)

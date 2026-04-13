@@ -34,6 +34,7 @@ from memory_palace.engine.ebbinghaus import should_prune as ebbinghaus_should_pr
 from memory_palace.engine.health import MemoryHealthScore, compute_health
 from memory_palace.engine.reflection import ReflectionEngine, should_reflect
 from memory_palace.models.curator import CuratorReport
+from memory_palace.models.errors import CuratorSafetyError
 from memory_palace.models.memory import MemoryItem, MemoryStatus
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from memory_palace.engine.fact_extractor import FactExtractor
     from memory_palace.engine.reconcile import ReconcileEngine
     from memory_palace.foundation.llm import LLMProvider
+    from memory_palace.service.heartbeat import HeartbeatController
     from memory_palace.service.memory_service import MemoryService
     from memory_palace.store.core_store import CoreStore
     from memory_palace.store.recall_store import RecallStore
@@ -123,6 +125,7 @@ class CuratorGraph:
         llm: LLMProvider,
         rooms_config: list[RoomConfig] | None = None,
         ebbinghaus_config: EbbinghausConfig | None = None,
+        heartbeat: HeartbeatController | None = None,
     ) -> None:
         self._ms = memory_service
         self._recall_store = recall_store
@@ -132,6 +135,7 @@ class CuratorGraph:
         self._reflection_engine = ReflectionEngine(llm)
         self._rooms_config = rooms_config or []
         self._ebbinghaus_config = ebbinghaus_config
+        self._heartbeat = heartbeat
 
     async def run(self, since: datetime | None = None) -> CuratorReport:
         """Execute the full Curator pipeline.
@@ -146,8 +150,16 @@ class CuratorGraph:
         state = CuratorState()
         phase = CuratorPhase.GATHER
 
+        # Reset heartbeat counters for this run
+        if self._heartbeat is not None:
+            self._heartbeat.reset()
+
         while phase != CuratorPhase.DONE:
             try:
+                # Heartbeat tick on every phase transition
+                if self._heartbeat is not None:
+                    self._heartbeat.tick()
+
                 if phase == CuratorPhase.GATHER:
                     phase = await self._gather(state)
                 elif phase == CuratorPhase.EXTRACT:
@@ -162,6 +174,26 @@ class CuratorGraph:
                     phase = self._health_check(state)
                 elif phase == CuratorPhase.REPORT:
                     phase = self._report(state, start_time)
+            except CuratorSafetyError as exc:
+                state.errors.append(f"Safety: {exc.reason} (stats={exc.stats})")
+                logger.warning(
+                    "curator_safety_stop",
+                    reason=exc.reason,
+                    stats=exc.stats,
+                )
+                # Jump directly to REPORT — build a safe fallback
+                state.report = CuratorReport(
+                    triggered_at=datetime.now(),
+                    trigger_reason="manual",
+                    facts_extracted=state.facts_extracted,
+                    memories_created=state.memories_created,
+                    memories_updated=state.memories_updated,
+                    memories_pruned=state.memories_pruned,
+                    reflections_generated=state.reflections_generated,
+                    duration_seconds=time.time() - start_time,
+                    errors=state.errors,
+                )
+                phase = CuratorPhase.DONE
             except Exception as exc:
                 state.errors.append(f"{phase}: {exc}")
                 logger.warning("curator_phase_error", phase=phase, error=str(exc))
@@ -200,6 +232,8 @@ class CuratorGraph:
         """Extract atomic facts from gathered items."""
         combined_text = "\n".join(item.content for item in state.items)
         try:
+            if self._heartbeat is not None:
+                self._heartbeat.record_llm_call()
             facts = await self._fact_extractor.extract(combined_text)
             state.facts = facts
             state.facts_extracted = len(facts)
@@ -212,7 +246,13 @@ class CuratorGraph:
         existing_items = self._recall_store.get_recent(50)
 
         for fact in state.facts:
+            # Dedup guard: skip already-processed memory_ids
+            if self._heartbeat is not None and self._heartbeat.check_dedup(fact.id):
+                continue
+
             try:
+                if self._heartbeat is not None:
+                    self._heartbeat.record_llm_call()
                 decision = await self._reconcile_engine.reconcile(
                     fact.content, existing_items
                 )
@@ -254,6 +294,8 @@ class CuratorGraph:
         """Generate reflections if importance threshold met."""
         if should_reflect(state.items):
             try:
+                if self._heartbeat is not None:
+                    self._heartbeat.record_llm_call()
                 reflections = await self._reflection_engine.reflect(state.items)
                 for r in reflections:
                     self._ms.save(
