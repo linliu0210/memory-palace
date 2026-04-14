@@ -13,7 +13,6 @@ from memory_palace.config import RoomConfig
 from memory_palace.engine.health import MemoryHealthScore, compute_health
 from memory_palace.models.memory import MemoryItem, MemoryStatus, MemoryTier, MemoryType
 
-
 # ── Helpers ──────────────────────────────────────────────────
 
 
@@ -108,13 +107,28 @@ class TestComputeHealth:
         """A well-maintained system scores high across all dimensions."""
         now = datetime.now()
         core_items = [
-            _make_item(room="general", status=MemoryStatus.ACTIVE, tier=MemoryTier.CORE, accessed_at=now - timedelta(days=1)),
-            _make_item(room="preferences", status=MemoryStatus.ACTIVE, tier=MemoryTier.CORE, accessed_at=now - timedelta(days=5)),
+            _make_item(
+                room="general", status=MemoryStatus.ACTIVE,
+                tier=MemoryTier.CORE, accessed_at=now - timedelta(days=1),
+            ),
+            _make_item(
+                room="preferences", status=MemoryStatus.ACTIVE,
+                tier=MemoryTier.CORE, accessed_at=now - timedelta(days=5),
+            ),
         ]
         recall_items = [
-            _make_item(room="projects", memory_type=MemoryType.PREFERENCE, accessed_at=now - timedelta(days=2)),
-            _make_item(room="people", memory_type=MemoryType.PROCEDURE, accessed_at=now - timedelta(days=10)),
-            _make_item(room="skills", memory_type=MemoryType.DECISION, accessed_at=now - timedelta(days=15)),
+            _make_item(
+                room="projects", memory_type=MemoryType.PREFERENCE,
+                accessed_at=now - timedelta(days=2),
+            ),
+            _make_item(
+                room="people", memory_type=MemoryType.PROCEDURE,
+                accessed_at=now - timedelta(days=10),
+            ),
+            _make_item(
+                room="skills", memory_type=MemoryType.DECISION,
+                accessed_at=now - timedelta(days=15),
+            ),
         ]
 
         result = compute_health(core_items, recall_items, DEFAULT_ROOMS)

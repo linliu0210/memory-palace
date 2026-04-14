@@ -426,7 +426,12 @@ class MemoryService:
                 self._archival_store.delete(memory_id)
                 self._index_in_archival_sync(new_item)
             except Exception:
-                logger.warning("archival_sync_update_failed", old_id=memory_id, new_id=new_item.id, exc_info=True)
+                logger.warning(
+                    "archival_sync_update_failed",
+                    old_id=memory_id,
+                    new_id=new_item.id,
+                    exc_info=True,
+                )
 
         # R24: Sync GraphStore on update (remove old node, add new)
         if self._graph_store is not None:
@@ -434,7 +439,12 @@ class MemoryService:
                 self._graph_store.remove_memory_node(memory_id)
                 self._graph_store.add_memory_node(new_item)
             except Exception:
-                logger.warning("graph_sync_update_failed", old_id=memory_id, new_id=new_item.id, exc_info=True)
+                logger.warning(
+                    "graph_sync_update_failed",
+                    old_id=memory_id,
+                    new_id=new_item.id,
+                    exc_info=True,
+                )
 
         return new_item
 

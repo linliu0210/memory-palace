@@ -5,7 +5,6 @@ SPEC Ref: SPEC_V02 §2.4 HybridRetriever, §RRF 算法
 Tests hybrid combine, FTS5-only fallback, RRF merge, room/importance filters.
 """
 
-import pytest
 
 from memory_palace.models.memory import MemoryItem, MemoryTier, MemoryType
 from memory_palace.service.hybrid_retriever import HybridRetriever, reciprocal_rank_fusion

@@ -13,9 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from memory_palace.config import Config, PersonaConfig
+from memory_palace.config import Config
 from memory_palace.service.persona_manager import PersonaManager
-
 
 # ── Fixtures ──────────────────────────────────────────────────
 

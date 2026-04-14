@@ -10,7 +10,7 @@ Tests for the v0.2 additions:
 
 import pytest
 
-from memory_palace.models.memory import MemoryItem, MemoryStatus, MemoryTier, MemoryType
+from memory_palace.models.memory import MemoryStatus, MemoryTier
 from memory_palace.service.memory_service import CORE_MAX_ITEMS_PER_BLOCK, MemoryService
 from memory_palace.store.core_store import CoreStore
 from memory_palace.store.recall_store import RecallStore

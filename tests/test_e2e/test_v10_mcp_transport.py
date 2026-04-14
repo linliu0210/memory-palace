@@ -265,10 +265,13 @@ class TestMCPSubprocessStdioSmoke:
     """Smoke-test the real stdio server entrypoint, not the in-process transport."""
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        shutil.which("uv") is None,
+        reason="uv not found in PATH — skip subprocess stdio test",
+    )
     async def test_cli_serve_stdio_roundtrip(self, tmp_path):
         repo_root = Path(__file__).resolve().parents[2]
         uv_bin = shutil.which("uv")
-        assert uv_bin, "uv must be available to launch the stdio MCP server"
 
         (tmp_path / "core").mkdir(exist_ok=True)
 

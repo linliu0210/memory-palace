@@ -371,7 +371,9 @@ class CuratorGraph:
             except Exception:
                 pass
 
-        state.health = compute_health(core_items, recall_items, self._rooms_config, metrics_summary)
+        state.health = compute_health(
+            core_items, recall_items, self._rooms_config, metrics_summary,
+        )
         return CuratorPhase.REPORT
 
     def _report(self, state: CuratorState, start_time: float) -> CuratorPhase:

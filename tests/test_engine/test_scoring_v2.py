@@ -13,15 +13,15 @@ from memory_palace.engine.scoring import (
     ScoredCandidate,
     cosine_similarity,
     rank,
-    recency_score,
 )
 from memory_palace.models.memory import MemoryItem, MemoryTier, MemoryType
-
 
 # ── Helpers ──────────────────────────────────────────────────
 
 
-def _make_item(content: str = "test", importance: float = 0.5, room: str = "general") -> MemoryItem:
+def _make_item(
+    content: str = "test", importance: float = 0.5, room: str = "general",
+) -> MemoryItem:
     """Create a minimal MemoryItem for testing."""
     return MemoryItem(
         content=content,
