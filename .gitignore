@@ -8,3 +8,14 @@ data/
 dist/
 build/
 .gitnexus
+
+# Codex / Agent workspace artifacts
+.omc/
+.omx/
+
+# pytest
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
