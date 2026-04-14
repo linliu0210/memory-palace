@@ -35,6 +35,7 @@ from memory_palace.store.core_store import CoreStore
 from memory_palace.store.recall_store import RecallStore
 
 if TYPE_CHECKING:
+    from memory_palace.config import Config
     from memory_palace.foundation.embedding import EmbeddingProvider
     from memory_palace.service.curator import CuratorService
     from memory_palace.service.scheduler import SleepTimeScheduler
@@ -43,7 +44,7 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Core budget: max items per block before auto-demote (SPEC §4.1 S-8)
+# Core budget default (overridden by Config.core.max_items_per_block)
 CORE_MAX_ITEMS_PER_BLOCK = 10
 
 
@@ -69,6 +70,7 @@ class MemoryService:
         archival_store: ArchivalStore | None = None,
         embedding: EmbeddingProvider | None = None,
         graph_store: GraphStore | None = None,
+        config: Config | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._core_store = CoreStore(data_dir)
@@ -79,6 +81,10 @@ class MemoryService:
         self._archival_store = archival_store
         self._embedding = embedding
         self._graph_store = graph_store
+        self._core_budget = (
+            config.core.max_items_per_block
+            if config else CORE_MAX_ITEMS_PER_BLOCK
+        )
         if llm is not None:
             self._fact_extractor = FactExtractor(llm)
         else:
@@ -153,7 +159,7 @@ class MemoryService:
                 existing = self._core_store.load(room)
 
                 # TD-7: Core budget check — auto-demote oldest if over limit
-                while len(existing) >= CORE_MAX_ITEMS_PER_BLOCK:
+                while len(existing) >= self._core_budget:
                     oldest = min(
                         (i for i in existing if i.status == MemoryStatus.ACTIVE),
                         key=lambda x: x.created_at,

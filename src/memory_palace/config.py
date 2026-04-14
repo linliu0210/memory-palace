@@ -37,6 +37,7 @@ class CoreConfig(BaseModel):
     """Core memory budget."""
 
     max_bytes: int = 2048
+    max_items_per_block: int = 10
 
 
 class RoomConfig(BaseModel):
