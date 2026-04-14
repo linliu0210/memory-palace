@@ -44,7 +44,7 @@ class TestE2EFullLifecycle:
         assert "深色" in old_item.content
 
         # === Step 2: search → returns original preference ===
-        results = ms.search("偏好")
+        results = ms.search_sync("偏好")
         assert len(results) >= 1
         assert any("深色" in r.content for r in results)
 
@@ -75,7 +75,7 @@ class TestE2EFullLifecycle:
         # === Step 5: search again → new preference appears, old doesn't ===
         # RecallStore.search() filters status='active', so SUPERSEDED items are excluded
         ms2 = MemoryService(tmp_data_dir)
-        results2 = ms2.search("偏好")
+        results2 = ms2.search_sync("偏好")
 
         # The old "深色模式" should be superseded, so it should NOT appear in active results
         old_contents = [r.content for r in results2 if "深色" in r.content]

@@ -13,7 +13,6 @@ from memory_palace.config import RoomConfig
 from memory_palace.engine.health import MemoryHealthScore, compute_health
 from memory_palace.models.memory import MemoryItem, MemoryStatus, MemoryTier, MemoryType
 
-
 # ── Helpers ──────────────────────────────────────────────────
 
 
@@ -53,7 +52,7 @@ DEFAULT_ROOMS = [
 
 
 class TestMemoryHealthScore:
-    """MemoryHealthScore holds five dimensions + overall property."""
+    """MemoryHealthScore holds six dimensions + overall property."""
 
     def test_all_dimensions_default_zero(self):
         """All dimensions default to 0.0."""
@@ -63,17 +62,19 @@ class TestMemoryHealthScore:
         assert score.coverage == 0.0
         assert score.diversity == 0.0
         assert score.coherence == 0.0
+        assert score.operations == 0.0
 
     def test_overall_weighted_average(self):
-        """overall = 0.25·freshness + 0.25·efficiency + 0.15·coverage + 0.15·diversity + 0.20·coherence."""
+        """Verify 6-dimension weighted average calculation."""
         score = MemoryHealthScore(
             freshness=1.0,
             efficiency=0.8,
             coverage=0.6,
             diversity=0.4,
             coherence=0.5,
+            operations=0.9,
         )
-        expected = 1.0 * 0.25 + 0.8 * 0.25 + 0.6 * 0.15 + 0.4 * 0.15 + 0.5 * 0.20
+        expected = 1.0 * 0.20 + 0.8 * 0.20 + 0.6 * 0.15 + 0.4 * 0.10 + 0.5 * 0.15 + 0.9 * 0.20
         assert score.overall == pytest.approx(expected)
 
     def test_perfect_score_is_one(self):
@@ -84,6 +85,7 @@ class TestMemoryHealthScore:
             coverage=1.0,
             diversity=1.0,
             coherence=1.0,
+            operations=1.0,
         )
         assert score.overall == pytest.approx(1.0)
 
@@ -105,13 +107,28 @@ class TestComputeHealth:
         """A well-maintained system scores high across all dimensions."""
         now = datetime.now()
         core_items = [
-            _make_item(room="general", status=MemoryStatus.ACTIVE, tier=MemoryTier.CORE, accessed_at=now - timedelta(days=1)),
-            _make_item(room="preferences", status=MemoryStatus.ACTIVE, tier=MemoryTier.CORE, accessed_at=now - timedelta(days=5)),
+            _make_item(
+                room="general", status=MemoryStatus.ACTIVE,
+                tier=MemoryTier.CORE, accessed_at=now - timedelta(days=1),
+            ),
+            _make_item(
+                room="preferences", status=MemoryStatus.ACTIVE,
+                tier=MemoryTier.CORE, accessed_at=now - timedelta(days=5),
+            ),
         ]
         recall_items = [
-            _make_item(room="projects", memory_type=MemoryType.PREFERENCE, accessed_at=now - timedelta(days=2)),
-            _make_item(room="people", memory_type=MemoryType.PROCEDURE, accessed_at=now - timedelta(days=10)),
-            _make_item(room="skills", memory_type=MemoryType.DECISION, accessed_at=now - timedelta(days=15)),
+            _make_item(
+                room="projects", memory_type=MemoryType.PREFERENCE,
+                accessed_at=now - timedelta(days=2),
+            ),
+            _make_item(
+                room="people", memory_type=MemoryType.PROCEDURE,
+                accessed_at=now - timedelta(days=10),
+            ),
+            _make_item(
+                room="skills", memory_type=MemoryType.DECISION,
+                accessed_at=now - timedelta(days=15),
+            ),
         ]
 
         result = compute_health(core_items, recall_items, DEFAULT_ROOMS)

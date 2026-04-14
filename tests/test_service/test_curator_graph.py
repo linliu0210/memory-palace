@@ -9,13 +9,11 @@ CuratorGraph — Pure Python State Machine:
 Tests the state machine flow, error handling, and health score integration.
 """
 
-import json
 
 import pytest
 
-from memory_palace.models.memory import MemoryItem, MemoryStatus, MemoryTier, MemoryType
-from memory_palace.service.curator_graph import CuratorGraph, CuratorPhase, CuratorState
-from memory_palace.store.core_store import CoreStore
+from memory_palace.models.memory import MemoryItem, MemoryTier, MemoryType
+from memory_palace.service.curator_graph import CuratorGraph, CuratorState
 from memory_palace.store.recall_store import RecallStore
 from tests.conftest import MockLLM
 

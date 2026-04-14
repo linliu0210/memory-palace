@@ -80,7 +80,7 @@ class TestMemoryServiceSearch:
         svc.save("Python是一种编程语言", importance=0.3)
         svc.save("Python用于数据科学", importance=0.6)
 
-        results = svc.search("Python")
+        results = svc.search_sync("Python")
         assert len(results) >= 1
         # Results should be returned (exact order depends on scoring)
         contents = [r.content for r in results]
@@ -92,7 +92,7 @@ class TestMemoryServiceSearch:
         svc.save("用户喜欢深色模式偏好", importance=0.3, room="preferences")
         svc.save("项目使用深色主题设计", importance=0.3, room="projects")
 
-        results = svc.search("深色", room="preferences")
+        results = svc.search_sync("深色", room="preferences")
         for item in results:
             assert item.room == "preferences"
 
@@ -102,7 +102,7 @@ class TestMemoryServiceSearch:
         svc.save("低重要性测试内容", importance=0.2)
         svc.save("高重要性测试内容", importance=0.6)
 
-        results = svc.search("测试内容", min_importance=0.5)
+        results = svc.search_sync("测试内容", min_importance=0.5)
         for item in results:
             assert item.importance >= 0.5
 

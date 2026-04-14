@@ -30,6 +30,7 @@ class CuratorReport(BaseModel):
     memories_updated: int = 0
     memories_merged: int = 0
     memories_pruned: int = 0
+    ebbinghaus_pruned: int = 0  # [v1.0] subset of memories_pruned via Ebbinghaus decay
     reflections_generated: int = 0  # [v0.2]
 
     duration_seconds: float = 0

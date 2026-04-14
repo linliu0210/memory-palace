@@ -12,8 +12,11 @@ Ref: SPEC_V02 §2.3, SPEC v2.0 §4.1 S-11, §4.6
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
+
+from memory_palace.engine.ebbinghaus import retention as _eb_retention
+from memory_palace.engine.ebbinghaus import stability as _eb_stability
 
 if TYPE_CHECKING:
     from memory_palace.models.memory import MemoryItem
@@ -33,14 +36,17 @@ class ScoredCandidate:
         recency_hours: Hours since last access (≥ 0).
         importance: Importance factor [0, 1].
         relevance: Cosine similarity or normalized BM25 [0, 1].
-        room_bonus: 1.0 if item's room matches query context, else 0.0.
+        proximity: Continuous proximity score [0, 1] based on graph distance.
+            Replaces the old binary room_bonus. 1.0 = same room, decays with distance.
+        access_count: Number of prior accesses (for Ebbinghaus decay).
     """
 
     item: MemoryItem
     recency_hours: float
     importance: float
     relevance: float
-    room_bonus: float = 0.0
+    proximity: float = 0.0
+    access_count: int = 0
 
 
 # ── Pure scoring functions ──────────────────────────────────
@@ -64,6 +70,28 @@ def recency_score(hours_since_access: float, decay_rate: float = 0.01) -> float:
     if hours_since_access < 0:
         hours_since_access = 0.0
     return math.exp(-decay_rate * hours_since_access)
+
+
+def ebbinghaus_recency(
+    hours_since_access: float,
+    access_count: int = 0,
+    base_stability: float = 168.0,
+) -> float:
+    """Compute recency factor via Ebbinghaus forgetting curve.
+
+    Uses ``stability()`` and ``retention()`` from the Ebbinghaus engine.
+    Drop-in alternative to ``recency_score()`` for more realistic decay.
+
+    Args:
+        hours_since_access: Hours since last access (≥ 0).
+        access_count: Number of prior accesses (reinforcement).
+        base_stability: Base stability S₀ in hours.
+
+    Returns:
+        Score in [0, 1], where 1.0 = just accessed.
+    """
+    s = _eb_stability(base_stability, access_count)
+    return _eb_retention(hours_since_access, s)
 
 
 def importance_score(importance: float) -> float:
@@ -143,15 +171,19 @@ def rank(
     candidates: list[ScoredCandidate],
     weights: tuple[float, float, float, float] = (0.20, 0.20, 0.50, 0.10),
     decay_rate: float = 0.01,
+    decay_mode: Literal["exponential", "ebbinghaus"] = "exponential",
+    base_stability: float = 168.0,
 ) -> list[MemoryItem]:
     """Sort candidates by 4-factor weighted score, descending.
 
-    Score = α·recency + β·importance + γ·relevance + δ·room_bonus
+    Score = α·recency + β·importance + γ·relevance + δ·proximity
 
     Args:
         candidates: ScoredCandidate instances to rank.
-        weights: (α_recency, β_importance, γ_relevance, δ_room_bonus).
-        decay_rate: Decay constant λ for recency computation.
+        weights: (α_recency, β_importance, γ_relevance, δ_proximity).
+        decay_rate: Decay constant λ for recency (exponential mode).
+        decay_mode: "exponential" (v0.2 default) or "ebbinghaus".
+        base_stability: Base stability S₀ for Ebbinghaus mode.
 
     Returns:
         MemoryItems sorted by combined score, highest first.
@@ -164,8 +196,11 @@ def rank(
     alpha, beta, gamma, delta = weights
     scored = []
     for c in candidates:
-        r = recency_score(c.recency_hours, decay_rate)
-        score = alpha * r + beta * c.importance + gamma * c.relevance + delta * c.room_bonus
+        if decay_mode == "ebbinghaus":
+            r = ebbinghaus_recency(c.recency_hours, c.access_count, base_stability)
+        else:
+            r = recency_score(c.recency_hours, decay_rate)
+        score = alpha * r + beta * c.importance + gamma * c.relevance + delta * c.proximity
         scored.append((score, c.item))
 
     scored.sort(key=lambda x: x[0], reverse=True)

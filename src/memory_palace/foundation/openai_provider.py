@@ -8,9 +8,14 @@ Ref: SPEC v2.0 §7.2, §8.1
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from memory_palace.foundation.llm import ModelConfig, get_api_key
+
+# Providers that do NOT support response_format: json_object
+_NO_JSON_FORMAT_PROVIDERS = {"minimax"}
 
 
 class OpenAIProvider:
@@ -56,7 +61,10 @@ class OpenAIProvider:
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self._config.max_tokens,
         }
-        if response_format is not None:
+        if (
+            response_format is not None
+            and self._config.provider not in _NO_JSON_FORMAT_PROVIDERS
+        ):
             body["response_format"] = {"type": "json_object"}
 
         url = f"{self._config.base_url}/chat/completions"
@@ -76,4 +84,13 @@ class OpenAIProvider:
         if resp.status_code != 200:
             raise RuntimeError(f"LLM API error {resp.status_code}: {resp.text}")
 
-        return resp.json()["choices"][0]["message"]["content"]
+        content = resp.json()["choices"][0]["message"]["content"]
+        # Strip <think>...</think> tags from reasoning models (MiniMax, DeepSeek, etc.)
+        content = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
+        fence_match = re.match(
+            r"^\s*```(?:json|JSON)?\s*\n(.*?)\n\s*```\s*$", content, re.DOTALL
+        )
+        if fence_match:
+            content = fence_match.group(1)
+        return content

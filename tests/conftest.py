@@ -8,8 +8,8 @@ substitutes for non-deterministic external services.
 Ref: SPEC v2.0 §7.2, CONVENTIONS.md Rule 2.5
 """
 
-from dataclasses import dataclass, field
 import json
+from dataclasses import dataclass, field
 
 import pytest
 
@@ -166,6 +166,18 @@ def tmp_data_dir(tmp_path):
     (tmp_path / "core").mkdir()
     (tmp_path / "archival").mkdir()
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def _clean_llm_env(monkeypatch):
+    """Remove MP_LLM__* and provider API key env vars to prevent leaking
+    host config into tests. Real-LLM tests set them explicitly."""
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("MP_LLM__"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
 
 
 # ============================================================

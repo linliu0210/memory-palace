@@ -1,4 +1,5 @@
-"""4F — Service: MemoryService, Retriever, HybridRetriever, CuratorService, CuratorGraph, ContextCompiler."""
+"""4F — Service: MemoryService, Retriever, HybridRetriever,
+CuratorService, CuratorGraph, ContextCompiler."""
 
 from memory_palace.service.context_compiler import ContextCompiler
 from memory_palace.service.curator import CuratorService

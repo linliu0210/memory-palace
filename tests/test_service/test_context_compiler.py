@@ -11,11 +11,9 @@ ContextCompiler assembles Agent context from three sources:
 
 import pytest
 
-from memory_palace.models.memory import MemoryItem, MemoryStatus, MemoryTier, MemoryType
+from memory_palace.models.memory import MemoryItem, MemoryTier, MemoryType
 from memory_palace.service.context_compiler import ContextCompiler
 from memory_palace.service.memory_service import MemoryService
-from memory_palace.store.recall_store import RecallStore
-
 
 # ── Mock HybridRetriever ───────────────────────────────────
 

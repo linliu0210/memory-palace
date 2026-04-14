@@ -6,13 +6,10 @@ Tests: reflect normal flow, output type=REFLECTION, importance propagation,
        source_ids tracking, max_insights cap, malformed JSON, threshold, empty.
 """
 
-import json
 
-import pytest
 
 from memory_palace.engine.reflection import ReflectionEngine, should_reflect
 from memory_palace.models.memory import MemoryItem, MemoryTier, MemoryType
-
 
 # ── Helpers ──────────────────────────────────────────────────
 

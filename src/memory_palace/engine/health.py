@@ -1,9 +1,9 @@
-"""MemoryHealthScore — 5-dimension health assessment.
+"""MemoryHealthScore — 6-dimension health assessment.
 
 Pure-function computation of system health across:
-freshness, efficiency, coverage, diversity, coherence.
+freshness, efficiency, coverage, diversity, coherence, operations.
 
-Ref: SPEC_V02 §2.3 (F-15)
+Ref: SPEC_V02 §2.3 (F-15), TASK_R23
 """
 
 from __future__ import annotations
@@ -18,27 +18,29 @@ from memory_palace.models.memory import MemoryItem, MemoryStatus
 
 
 class MemoryHealthScore(BaseModel):
-    """Five-dimension health assessment. Ref: SPEC §2.3."""
+    """Six-dimension health assessment. Ref: SPEC §2.3, R23."""
 
     freshness: float = 0.0  # [0,1] — fraction of memories accessed in last 30 days
     efficiency: float = 0.0  # [0,1] — Core active/total ratio
     coverage: float = 0.0  # [0,1] — fraction of configured rooms with items
     diversity: float = 0.0  # [0,1] — MemoryType distribution evenness (Shannon)
     coherence: float = 0.0  # [0,1] — currently 1.0 placeholder (needs dedup engine)
+    operations: float = 0.0  # [0,1] — operational metrics health (R23)
 
     @property
     def overall(self) -> float:
-        """Weighted average of all dimensions.
+        """Weighted average of all six dimensions.
 
-        Weights: freshness=0.25, efficiency=0.25, coverage=0.15,
-                 diversity=0.15, coherence=0.20.
+        Weights: freshness=0.20, efficiency=0.20, coverage=0.15,
+                 diversity=0.10, coherence=0.15, operations=0.20.
         """
         return (
-            self.freshness * 0.25
-            + self.efficiency * 0.25
+            self.freshness * 0.20
+            + self.efficiency * 0.20
             + self.coverage * 0.15
-            + self.diversity * 0.15
-            + self.coherence * 0.20
+            + self.diversity * 0.10
+            + self.coherence * 0.15
+            + self.operations * 0.20
         )
 
 
@@ -46,8 +48,9 @@ def compute_health(
     core_items: list[MemoryItem],
     recall_items: list[MemoryItem],
     rooms_config: list[RoomConfig],
+    metrics_summary: dict | None = None,
 ) -> MemoryHealthScore:
-    """Compute 5-dimension health score from memory collections.
+    """Compute 6-dimension health score from memory collections.
 
     This is a pure function — no side effects or I/O.
 
@@ -55,11 +58,15 @@ def compute_health(
         core_items: Items in the Core tier.
         recall_items: Items in the Recall tier.
         rooms_config: Configured room definitions.
+        metrics_summary: Optional metrics summary dict from MemoryMetrics.
+            When provided, the ``operations`` dimension is computed.
 
     Returns:
-        MemoryHealthScore with all five dimensions computed.
+        MemoryHealthScore with all six dimensions computed.
     """
     all_items = core_items + recall_items
+
+    ops_score = compute_operations_score(metrics_summary) if metrics_summary else 0.0
 
     return MemoryHealthScore(
         freshness=_compute_freshness(all_items),
@@ -67,7 +74,28 @@ def compute_health(
         coverage=_compute_coverage(all_items, rooms_config),
         diversity=_compute_diversity(all_items),
         coherence=_compute_coherence(all_items),
+        operations=ops_score,
     )
+
+
+def compute_operations_score(metrics_summary: dict) -> float:
+    """Compute operations health from metrics summary.
+
+    Scoring based on search P95 latency:
+    - < 100ms → 1.0 (excellent)
+    - < 200ms → 0.7 (acceptable)
+    - >= 200ms → 0.3 (degraded)
+
+    Returns 1.0 if no search data recorded (benefit of the doubt).
+    """
+    p95 = metrics_summary.get("search_p95_ms", 0.0)
+    if p95 == 0.0:
+        return 1.0  # no data yet — assume healthy
+    if p95 < 100.0:
+        return 1.0
+    if p95 < 200.0:
+        return 0.7
+    return 0.3
 
 
 # ── Dimension Computations ──────────────────────────────────
@@ -151,11 +179,29 @@ def _compute_diversity(items: list[MemoryItem]) -> float:
 
 
 def _compute_coherence(items: list[MemoryItem]) -> float:
-    """Coherence score — placeholder for future dedup/contradiction detection.
+    """Coherence score based on content uniqueness.
 
-    Currently returns 1.0 (fully coherent) when items exist, 0.0 when empty.
-    Will be enhanced in v0.3 with semantic deduplication.
+    Detects near-duplicate memories by comparing normalized content.
+    Returns 1.0 (fully coherent / no duplicates) when all items are unique,
+    lower values when duplicates or near-duplicates are present.
+
+    Score = 1.0 - (duplicate_count / total_count)
     """
     if not items:
         return 0.0
-    return 1.0  # TODO: implement semantic dedup/contradiction detection
+    if len(items) == 1:
+        return 1.0
+
+    # Normalize content for comparison: lowercase, strip whitespace
+    seen: set[str] = set()
+    duplicate_count = 0
+    for item in items:
+        normalized = item.content.strip().lower()
+        # Use first 200 chars as fingerprint (handles near-dupes with minor edits)
+        fingerprint = normalized[:200]
+        if fingerprint in seen:
+            duplicate_count += 1
+        else:
+            seen.add(fingerprint)
+
+    return 1.0 - (duplicate_count / len(items))

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from memory_palace.foundation.embedding import EmbeddingConfig
@@ -37,6 +37,7 @@ class CoreConfig(BaseModel):
     """Core memory budget."""
 
     max_bytes: int = 2048
+    max_items_per_block: int = 10
 
 
 class RoomConfig(BaseModel):
@@ -44,6 +45,14 @@ class RoomConfig(BaseModel):
 
     name: str
     description: str = ""
+    parent: str | None = None
+
+
+class GraphConfig(BaseModel):
+    """KuzuDB graph storage configuration."""
+
+    enabled: bool = False
+    include_relations: bool = True
 
 
 class ScoringConfig(BaseModel):
@@ -57,6 +66,15 @@ class ScoringConfig(BaseModel):
     relevance: float = 0.50
     room_bonus: float = 0.10
 
+    @model_validator(mode="after")
+    def _check_weights_sum(self) -> ScoringConfig:
+        total = self.recency + self.importance + self.relevance + self.room_bonus
+        if not (0.95 <= total <= 1.05):
+            raise ValueError(
+                f"Scoring weights must sum to ~1.0, got {total:.2f}"
+            )
+        return self
+
 
 class CuratorTrigger(BaseModel):
     """When the Memory Curator should wake up."""
@@ -64,12 +82,37 @@ class CuratorTrigger(BaseModel):
     timer_hours: int = 24
     session_count: int = 20
     cooldown_hours: int = 1
+    importance_sum: float = 5.0
 
 
 class CuratorConfig(BaseModel):
     """Memory Curator configuration."""
 
     trigger: CuratorTrigger = CuratorTrigger()
+    prune_threshold: float = 0.05
+
+
+class PersonaConfig(BaseModel):
+    """A named persona with its own data directory.
+
+    Each persona gets an independent data_dir containing Core, Recall,
+    Archival, and Audit data — fully isolated from other personas.
+    """
+
+    name: str
+    data_dir: str  # relative or absolute path, ~ expansion supported
+    description: str = ""
+
+
+class EbbinghausConfig(BaseModel):
+    """Ebbinghaus forgetting curve parameters.
+
+    Controls the decay model used for memory retention scoring
+    and pruning decisions.
+    """
+
+    enabled: bool = True
+    base_stability_hours: float = 168.0  # 1 week
     prune_threshold: float = 0.05
 
 
@@ -112,7 +155,15 @@ class Config(BaseSettings):
         RoomConfig(name="skills", description="技能记忆"),
     ]
     scoring: ScoringConfig = ScoringConfig()
+    graph: GraphConfig = GraphConfig()
     curator: CuratorConfig = CuratorConfig()
+    ebbinghaus: EbbinghausConfig = EbbinghausConfig()
+    personas: list[PersonaConfig] = [
+        PersonaConfig(
+            name="default", data_dir="~/.memory_palace", description="默认 persona"
+        )
+    ]
+    active_persona: str = "default"
 
     @classmethod
     def from_yaml(cls, path: Path) -> Config:

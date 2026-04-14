@@ -1,2 +1,2 @@
-# tools.py — LLM Tool 定义 (Round 6 实现)
-# See SPEC v2.0 §5.6
+# tools.py — Deprecated. See mcp_server.py
+# Retained for backward compatibility reference only.
