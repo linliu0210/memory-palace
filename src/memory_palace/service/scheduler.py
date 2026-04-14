@@ -9,6 +9,7 @@ Ref: SPEC_V10 R14, CONVENTIONS_V10 §6
 from __future__ import annotations
 
 import asyncio
+import time as _time
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -30,15 +31,20 @@ class SleepTimeScheduler:
     Args:
         curator_service: The CuratorService instance to trigger.
         check_interval: Seconds between periodic checks (default 300 = 5 min).
+        min_interval: Minimum seconds between curator runs (cooldown).
+            Prevents event-driven notify() from triggering too-frequent
+            curations. Default 0 = no cooldown.
     """
 
     def __init__(
         self,
         curator_service: CuratorService,
         check_interval: int | float = 300,
+        min_interval: int | float = 0,
     ) -> None:
         self._curator = curator_service
         self._check_interval = check_interval
+        self._min_interval = min_interval
 
         self._running = False
         self._task: asyncio.Task | None = None
@@ -50,6 +56,7 @@ class SleepTimeScheduler:
         self._last_trigger_reason: str = ""
         self._last_run_report: CuratorReport | None = None
         self._started_at: datetime | None = None
+        self._last_run_at: float = 0.0  # monotonic timestamp
 
     async def start(self) -> None:
         """Start the background scheduler task.
@@ -161,7 +168,7 @@ class SleepTimeScheduler:
 
             # Check trigger conditions
             should, reason = self._curator.should_trigger()
-            if not should:
+            if not should or not self._cooldown_elapsed():
                 continue
 
             # Run curator
@@ -172,6 +179,7 @@ class SleepTimeScheduler:
                 self._last_run_report = report
                 self._trigger_count += 1
                 self._last_trigger_reason = reason
+                self._last_run_at = _time.monotonic()
                 logger.info(
                     "Scheduler curator run complete",
                     trigger_count=self._trigger_count,
@@ -181,3 +189,9 @@ class SleepTimeScheduler:
                 logger.exception("Curator run failed in scheduler")
             finally:
                 self._curator_active = False
+
+    def _cooldown_elapsed(self) -> bool:
+        """Check if enough time has passed since the last curator run."""
+        if self._min_interval <= 0:
+            return True
+        return (_time.monotonic() - self._last_run_at) >= self._min_interval
