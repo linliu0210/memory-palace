@@ -96,7 +96,18 @@ class CuratorService:
         Returns:
             CuratorReport with all metrics populated.
         """
+        from memory_palace.config import Config
+        from memory_palace.engine.metrics import get_metrics
+
         ms = self._get_memory_service()
+
+        # Load Ebbinghaus config
+        yaml_path = self._data_dir / "memory_palace.yaml"
+        if yaml_path.exists():
+            cfg = Config.from_yaml(yaml_path)
+        else:
+            cfg = Config()
+        ebbinghaus_config = cfg.ebbinghaus
 
         graph = CuratorGraph(
             memory_service=ms,
@@ -106,7 +117,9 @@ class CuratorService:
             reconcile_engine=self._reconcile_engine,
             llm=self._llm,
             rooms_config=self._rooms_config,
+            ebbinghaus_config=ebbinghaus_config,
             heartbeat=self._heartbeat,
+            metrics=get_metrics(),
         )
 
         report = await graph.run(since=since)

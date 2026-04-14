@@ -37,7 +37,7 @@ class TestAuditEntry:
         assert restored.details == entry.details
 
     def test_action_enum_values(self):
-        """AuditAction: create, update, merge, prune, promote, demote, access."""
+        """AuditAction: create, update, merge, prune, promote, demote, access, ingest."""
         values = {a.value for a in AuditAction}
         assert values == {
             "create",
@@ -47,6 +47,7 @@ class TestAuditEntry:
             "promote",
             "demote",
             "access",
+            "ingest",
         }
 
     def test_actor_field_accepts_string(self):

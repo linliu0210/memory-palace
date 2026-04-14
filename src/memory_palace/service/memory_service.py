@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from memory_palace.engine.fact_extractor import FactExtractor
+from memory_palace.engine.metrics import OperationTimer, get_metrics
 from memory_palace.foundation.audit_log import AuditAction, AuditEntry, AuditLog
 from memory_palace.foundation.llm import LLMProvider
 from memory_palace.models.memory import (
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from memory_palace.service.curator import CuratorService
     from memory_palace.service.scheduler import SleepTimeScheduler
     from memory_palace.store.archival_store import ArchivalStore
+    from memory_palace.store.graph_store import GraphStore
 
 logger = structlog.get_logger(__name__)
 
@@ -57,6 +59,7 @@ class MemoryService:
         llm: Optional LLM provider (needed for save_batch via FactExtractor).
         archival_store: Optional ArchivalStore for vector indexing.
         embedding: Optional EmbeddingProvider for computing embeddings.
+        graph_store: Optional GraphStore for KuzuDB graph proximity scoring.
     """
 
     def __init__(
@@ -65,6 +68,7 @@ class MemoryService:
         llm: LLMProvider | None = None,
         archival_store: ArchivalStore | None = None,
         embedding: EmbeddingProvider | None = None,
+        graph_store: GraphStore | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._core_store = CoreStore(data_dir)
@@ -74,6 +78,7 @@ class MemoryService:
         self._llm = llm
         self._archival_store = archival_store
         self._embedding = embedding
+        self._graph_store = graph_store
         if llm is not None:
             self._fact_extractor = FactExtractor(llm)
         else:
@@ -81,6 +86,9 @@ class MemoryService:
 
         # R19: asyncio write lock for concurrency safety
         self._write_lock = asyncio.Lock()
+
+        # R23: operational metrics collection
+        self._metrics = get_metrics()
 
         # Optional scheduler and curator integration (R14)
         self._scheduler: SleepTimeScheduler | None = None
@@ -126,65 +134,82 @@ class MemoryService:
         if importance is None:
             importance = 0.5
 
-        # Determine tier based on importance
-        tier = MemoryTier.CORE if importance >= 0.7 else MemoryTier.RECALL
+        timer = OperationTimer("save")
+        with timer:
+            # Determine tier based on importance
+            tier = MemoryTier.CORE if importance >= 0.7 else MemoryTier.RECALL
 
-        item = MemoryItem(
-            content=content,
-            memory_type=memory_type,
-            tier=tier,
-            importance=importance,
-            tags=tags,
-            room=room,
-        )
-
-        # Route to appropriate store
-        if tier == MemoryTier.CORE:
-            existing = self._core_store.load(room)
-
-            # TD-7: Core budget check — auto-demote oldest if over limit
-            while len(existing) >= CORE_MAX_ITEMS_PER_BLOCK:
-                oldest = min(
-                    (i for i in existing if i.status == MemoryStatus.ACTIVE),
-                    key=lambda x: x.created_at,
-                    default=None,
-                )
-                if oldest is None:
-                    break  # all items are already non-active
-                # Demote to Recall
-                existing = [i for i in existing if i.id != oldest.id]
-                demoted = oldest.model_copy(update={"tier": MemoryTier.RECALL})
-                self._recall_store.insert(demoted)
-                logger.info(
-                    "Core auto-demote",
-                    memory_id=oldest.id,
-                    room=room,
-                )
-
-            existing.append(item)
-            self._core_store.save(room, existing)
-        else:
-            self._recall_store.insert(item)
-
-        # Audit
-        self._audit_log.append(
-            AuditEntry(
-                action=AuditAction.CREATE,
-                memory_id=item.id,
-                actor="user",
-                details={"content": content, "tier": tier, "room": room},
+            item = MemoryItem(
+                content=content,
+                memory_type=memory_type,
+                tier=tier,
+                importance=importance,
+                tags=tags,
+                room=room,
             )
-        )
 
-        logger.info("Memory saved", memory_id=item.id, tier=tier, room=room)
+            # Route to appropriate store
+            if tier == MemoryTier.CORE:
+                existing = self._core_store.load(room)
 
-        # R14: Notify scheduler and update curator tracking
-        if self._curator is not None:
-            self._curator.increment_session()
-            self._curator.record_importance(importance)
-        if self._scheduler is not None:
-            self._scheduler.notify("save")
+                # TD-7: Core budget check — auto-demote oldest if over limit
+                while len(existing) >= CORE_MAX_ITEMS_PER_BLOCK:
+                    oldest = min(
+                        (i for i in existing if i.status == MemoryStatus.ACTIVE),
+                        key=lambda x: x.created_at,
+                        default=None,
+                    )
+                    if oldest is None:
+                        break  # all items are already non-active
+                    # Demote to Recall
+                    existing = [i for i in existing if i.id != oldest.id]
+                    demoted = oldest.model_copy(update={"tier": MemoryTier.RECALL})
+                    self._recall_store.insert(demoted)
+                    logger.info(
+                        "Core auto-demote",
+                        memory_id=oldest.id,
+                        room=room,
+                    )
 
+                existing.append(item)
+                self._core_store.save(room, existing)
+            else:
+                self._recall_store.insert(item)
+
+            # Audit
+            self._audit_log.append(
+                AuditEntry(
+                    action=AuditAction.CREATE,
+                    memory_id=item.id,
+                    actor="user",
+                    details={"content": content, "tier": tier, "room": room},
+                )
+            )
+
+            logger.info("Memory saved", memory_id=item.id, tier=tier, room=room)
+
+            # v0.2: Index ALL items in ArchivalStore for semantic search
+            if self._archival_store is not None:
+                try:
+                    self._index_in_archival_sync(item)
+                except Exception:
+                    logger.warning("archival_index_failed", memory_id=item.id, exc_info=True)
+
+            # R24: Sync to GraphStore (incremental, skip on error)
+            if self._graph_store is not None:
+                try:
+                    self._graph_store.add_memory_node(item)
+                except Exception:
+                    logger.warning("graph_sync_failed", memory_id=item.id, exc_info=True)
+
+            # R14: Notify scheduler and update curator tracking
+            if self._curator is not None:
+                self._curator.increment_session()
+                self._curator.record_importance(importance)
+            if self._scheduler is not None:
+                self._scheduler.notify("save")
+
+        self._metrics.record_save(timer.duration_ms)
         return item
 
     async def save_batch(self, texts: list[str]) -> list[MemoryItem]:
@@ -220,7 +245,7 @@ class MemoryService:
 
         return saved
 
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 5,
@@ -229,7 +254,8 @@ class MemoryService:
     ) -> list[MemoryItem]:
         """Search memories, ranked by combined score.
 
-        Delegates to Retriever for FTS5 + scoring.
+        Uses HybridRetriever (FTS5 + Vector) when archival is configured,
+        otherwise falls back to FTS5-only Retriever.
 
         Args:
             query: Search query string.
@@ -240,12 +266,25 @@ class MemoryService:
         Returns:
             Ranked list of MemoryItems, highest score first.
         """
-        return self._retriever.search(
-            query=query,
-            top_k=top_k,
-            room=room,
-            min_importance=min_importance,
-        )
+        timer = OperationTimer("search")
+        with timer:
+            hybrid = self.get_hybrid_retriever()
+            if hybrid is not None:
+                results = await hybrid.search(
+                    query=query,
+                    top_k=top_k,
+                    room=room,
+                    min_importance=min_importance,
+                )
+            else:
+                results = self._retriever.search(
+                    query=query,
+                    top_k=top_k,
+                    room=room,
+                    min_importance=min_importance,
+                )
+        self._metrics.record_search(timer.duration_ms)
+        return results
 
     def get_by_id(self, memory_id: str) -> MemoryItem | None:
         """Get memory by ID from any tier (Core → Recall → Archival).
@@ -380,6 +419,23 @@ class MemoryService:
             new_id=new_item.id,
             reason=reason,
         )
+
+        # v0.2: Sync ArchivalStore on update (delete old, index new)
+        if self._archival_store is not None:
+            try:
+                self._archival_store.delete(memory_id)
+                self._index_in_archival_sync(new_item)
+            except Exception:
+                logger.warning("archival_sync_update_failed", old_id=memory_id, new_id=new_item.id, exc_info=True)
+
+        # R24: Sync GraphStore on update (remove old node, add new)
+        if self._graph_store is not None:
+            try:
+                self._graph_store.remove_memory_node(memory_id)
+                self._graph_store.add_memory_node(new_item)
+            except Exception:
+                logger.warning("graph_sync_update_failed", old_id=memory_id, new_id=new_item.id, exc_info=True)
+
         return new_item
 
     def forget(self, memory_id: str, reason: str) -> bool:
@@ -423,7 +479,147 @@ class MemoryService:
         )
 
         logger.info("Memory forgotten", memory_id=memory_id, reason=reason)
+
+        # v0.2: Sync ArchivalStore on forget (delete entry)
+        if self._archival_store is not None:
+            try:
+                self._archival_store.delete(memory_id)
+            except Exception:
+                logger.warning("archival_sync_forget_failed", memory_id=memory_id, exc_info=True)
+
+        # R24: Sync GraphStore on forget (remove node)
+        if self._graph_store is not None:
+            try:
+                self._graph_store.remove_memory_node(memory_id)
+            except Exception:
+                logger.warning("graph_sync_forget_failed", memory_id=memory_id, exc_info=True)
+
         return True
+
+    def search_sync(
+        self,
+        query: str,
+        top_k: int = 5,
+        room: str | None = None,
+        min_importance: float = 0.0,
+    ) -> list[MemoryItem]:
+        """Synchronous search across both Core and Recall tiers.
+
+        Merges FTS5 results from Recall with keyword-matched Core items,
+        then returns up to *top_k* results sorted by importance descending.
+        """
+        timer = OperationTimer("search")
+        with timer:
+            # Recall tier: FTS5 search
+            recall_results = self._retriever.search(
+                query=query,
+                top_k=top_k,
+                room=room,
+                min_importance=min_importance,
+            )
+
+            # Core tier: keyword match across all blocks
+            core_results: list[MemoryItem] = []
+            query_lower = query.lower() if query else ""
+            if query_lower:
+                blocks = self._core_store.list_blocks()
+                if room is not None:
+                    blocks = [b for b in blocks if b == room]
+                for block in blocks:
+                    for item in self._core_store.load(block):
+                        if item.status != MemoryStatus.ACTIVE:
+                            continue
+                        if item.importance < min_importance:
+                            continue
+                        if query_lower in item.content.lower():
+                            core_results.append(item)
+
+            # Merge and deduplicate (Core items may also be in Recall)
+            seen_ids = {r.id for r in recall_results}
+            merged = list(recall_results)
+            for item in core_results:
+                if item.id not in seen_ids:
+                    merged.append(item)
+                    seen_ids.add(item.id)
+
+            # Sort by importance descending, truncate to top_k
+            merged.sort(key=lambda x: x.importance, reverse=True)
+            results = merged[:top_k]
+
+        self._metrics.record_search(timer.duration_ms)
+        return results
+
+    def get_recent(self, n: int = 10) -> list[MemoryItem]:
+        """Get the N most recently created Recall items.
+
+        Args:
+            n: Number of items to return.
+
+        Returns:
+            List of MemoryItems ordered by created_at descending.
+        """
+        return self._recall_store.get_recent(n)
+
+    def get_hybrid_retriever(self):
+        """Return a HybridRetriever if archival+embedding are configured, else None."""
+        if self._archival_store is not None and self._embedding is not None:
+            from memory_palace.service.hybrid_retriever import HybridRetriever
+
+            return HybridRetriever(
+                recall_store=self._recall_store,
+                archival_store=self._archival_store,
+                embedding=self._embedding,
+                graph_store=self._graph_store,
+            )
+        return None
+
+    def get_all_items(self) -> tuple[list[MemoryItem], list[MemoryItem]]:
+        """Return (core_items, recall_items) for health computation.
+
+        Returns:
+            Tuple of (core items list, recall items list).
+        """
+        core_items: list[MemoryItem] = []
+        for block in self._core_store.list_blocks():
+            core_items.extend(self._core_store.load(block))
+        recall_items = self._recall_store.get_recent(1000)
+        return core_items, recall_items
+
+    def _index_in_archival_sync(self, item: MemoryItem) -> None:
+        """Index item in ArchivalStore synchronously.
+
+        Computes embedding if an EmbeddingProvider is available,
+        running the async embed() in a new event loop if necessary.
+        """
+        import asyncio
+
+        embedding = None
+        if self._embedding is not None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is None:
+                vectors = asyncio.run(self._embedding.embed([item.content]))
+                embedding = vectors[0]
+            else:
+                # Inside an existing event loop — use nest workaround
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    vectors = pool.submit(
+                        asyncio.run, self._embedding.embed([item.content])
+                    ).result()
+                    embedding = vectors[0]
+
+        if embedding is not None:
+            metadata = self._archival_store._build_metadata(item)
+            self._archival_store._collection.upsert(
+                ids=[item.id],
+                documents=[item.content],
+                embeddings=[embedding],
+                metadatas=[metadata],
+            )
 
     def get_core_context(self) -> str:
         """Return ACTIVE-only Core Memory text concatenated.
@@ -467,6 +663,15 @@ class MemoryService:
             result["total"] += result["archival_count"]
 
         return result
+
+    def get_metrics(self) -> dict:
+        """Return operational metrics summary.
+
+        Returns:
+            Dict with search_p95_ms, save_p95_ms, curator_avg_duration_s,
+            growth_rate_per_day, total_searches, total_saves, total_curations.
+        """
+        return self._metrics.summary
 
     # ── R19: Async lock-wrapped methods for MCP concurrency safety ──
 

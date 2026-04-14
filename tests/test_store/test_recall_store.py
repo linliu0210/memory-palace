@@ -124,6 +124,38 @@ class TestRecallStoreSearch:
         assert len(results) >= 1
         assert all(r["item"].room == "preferences" for r in results)
 
+    def test_search_with_date_token_returns_matches(self, tmp_data_dir):
+        """Date-like tokens should be treated as plain full-text input, not FTS syntax."""
+        store = RecallStore(tmp_data_dir)
+        store.insert(_make_item(content="发布日期是 2026-04-13", item_id="date-1"))
+
+        results = store.search("2026-04-13")
+
+        assert len(results) >= 1
+        assert any(r["item"].id == "date-1" for r in results)
+
+    def test_search_with_hyphenated_token_returns_matches(self, tmp_data_dir):
+        """Hyphenated tokens should be searchable without MATCH parse failures."""
+        store = RecallStore(tmp_data_dir)
+        store.insert(_make_item(content="标签包含 foo-bar", item_id="hyphen-1"))
+
+        results = store.search("foo-bar")
+
+        assert len(results) >= 1
+        assert any(r["item"].id == "hyphen-1" for r in results)
+
+    def test_search_with_multiple_plain_tokens_keeps_and_semantics(self, tmp_data_dir):
+        """Multiple words should still behave like a normal full-text AND query."""
+        store = RecallStore(tmp_data_dir)
+        store.insert(_make_item(content="Nested Codex MCP smoke test", item_id="multi-1"))
+        store.insert(_make_item(content="Nested Codex only", item_id="multi-2"))
+
+        results = store.search("Nested Codex smoke")
+
+        ids = {r["item"].id for r in results}
+        assert "multi-1" in ids
+        assert "multi-2" not in ids
+
 
 class TestRecallStoreRetrieval:
     """RecallStore direct retrieval operations."""

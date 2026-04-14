@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from memory_palace.foundation.embedding import EmbeddingConfig
@@ -44,6 +44,14 @@ class RoomConfig(BaseModel):
 
     name: str
     description: str = ""
+    parent: str | None = None
+
+
+class GraphConfig(BaseModel):
+    """KuzuDB graph storage configuration."""
+
+    enabled: bool = False
+    include_relations: bool = True
 
 
 class ScoringConfig(BaseModel):
@@ -56,6 +64,15 @@ class ScoringConfig(BaseModel):
     importance: float = 0.20
     relevance: float = 0.50
     room_bonus: float = 0.10
+
+    @model_validator(mode="after")
+    def _check_weights_sum(self) -> ScoringConfig:
+        total = self.recency + self.importance + self.relevance + self.room_bonus
+        if not (0.95 <= total <= 1.05):
+            raise ValueError(
+                f"Scoring weights must sum to ~1.0, got {total:.2f}"
+            )
+        return self
 
 
 class CuratorTrigger(BaseModel):
@@ -137,6 +154,7 @@ class Config(BaseSettings):
         RoomConfig(name="skills", description="技能记忆"),
     ]
     scoring: ScoringConfig = ScoringConfig()
+    graph: GraphConfig = GraphConfig()
     curator: CuratorConfig = CuratorConfig()
     ebbinghaus: EbbinghausConfig = EbbinghausConfig()
     personas: list[PersonaConfig] = [

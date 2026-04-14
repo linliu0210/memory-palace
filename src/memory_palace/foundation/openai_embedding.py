@@ -35,7 +35,7 @@ class OpenAIEmbedding:
     ) -> None:
         self._config = config or EmbeddingConfig()
         self._base_url = base_url
-        self._api_key = get_api_key("openai")
+        self._api_key = get_api_key(self._config.provider)
         self._timeout = timeout
 
     @property

@@ -36,14 +36,16 @@ class ScoredCandidate:
         recency_hours: Hours since last access (≥ 0).
         importance: Importance factor [0, 1].
         relevance: Cosine similarity or normalized BM25 [0, 1].
-        room_bonus: 1.0 if item's room matches query context, else 0.0.
+        proximity: Continuous proximity score [0, 1] based on graph distance.
+            Replaces the old binary room_bonus. 1.0 = same room, decays with distance.
+        access_count: Number of prior accesses (for Ebbinghaus decay).
     """
 
     item: MemoryItem
     recency_hours: float
     importance: float
     relevance: float
-    room_bonus: float = 0.0
+    proximity: float = 0.0
     access_count: int = 0
 
 
@@ -174,11 +176,11 @@ def rank(
 ) -> list[MemoryItem]:
     """Sort candidates by 4-factor weighted score, descending.
 
-    Score = α·recency + β·importance + γ·relevance + δ·room_bonus
+    Score = α·recency + β·importance + γ·relevance + δ·proximity
 
     Args:
         candidates: ScoredCandidate instances to rank.
-        weights: (α_recency, β_importance, γ_relevance, δ_room_bonus).
+        weights: (α_recency, β_importance, γ_relevance, δ_proximity).
         decay_rate: Decay constant λ for recency (exponential mode).
         decay_mode: "exponential" (v0.2 default) or "ebbinghaus".
         base_stability: Base stability S₀ for Ebbinghaus mode.
@@ -198,7 +200,7 @@ def rank(
             r = ebbinghaus_recency(c.recency_hours, c.access_count, base_stability)
         else:
             r = recency_score(c.recency_hours, decay_rate)
-        score = alpha * r + beta * c.importance + gamma * c.relevance + delta * c.room_bonus
+        score = alpha * r + beta * c.importance + gamma * c.relevance + delta * c.proximity
         scored.append((score, c.item))
 
     scored.sort(key=lambda x: x[0], reverse=True)

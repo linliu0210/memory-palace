@@ -37,7 +37,7 @@ def _make_candidate(
     recency_hours: float = 0.0,
     importance: float = 0.5,
     relevance: float = 0.5,
-    room_bonus: float = 0.0,
+    proximity: float = 0.0,
     room: str = "general",
 ) -> ScoredCandidate:
     """Create a ScoredCandidate with a minimal MemoryItem."""
@@ -47,7 +47,7 @@ def _make_candidate(
         recency_hours=recency_hours,
         importance=importance,
         relevance=relevance,
-        room_bonus=room_bonus,
+        proximity=proximity,
     )
 
 
@@ -67,16 +67,16 @@ class TestScoredCandidate:
             recency_hours=10.0,
             importance=0.8,
             relevance=0.6,
-            room_bonus=1.0,
+            proximity=1.0,
         )
         assert sc.item is item
         assert sc.recency_hours == 10.0
         assert sc.importance == 0.8
         assert sc.relevance == 0.6
-        assert sc.room_bonus == 1.0
+        assert sc.proximity == 1.0
 
-    def test_default_room_bonus_is_zero(self):
-        """room_bonus defaults to 0.0."""
+    def test_default_proximity_is_zero(self):
+        """proximity defaults to 0.0."""
         item = _make_item()
         sc = ScoredCandidate(
             item=item,
@@ -84,7 +84,7 @@ class TestScoredCandidate:
             importance=0.5,
             relevance=0.5,
         )
-        assert sc.room_bonus == 0.0
+        assert sc.proximity == 0.0
 
 
 # ============================================================
@@ -156,9 +156,15 @@ class TestRankV2:
         assert result[1].content == "low"
 
     def test_room_bonus_breaks_tie(self):
-        """When other factors are equal, room_bonus tips the ranking."""
-        no_bonus = _make_candidate(content="no_bonus", recency_hours=0.0, importance=0.5, relevance=0.5, room_bonus=0.0)
-        with_bonus = _make_candidate(content="with_bonus", recency_hours=0.0, importance=0.5, relevance=0.5, room_bonus=1.0)
+        """When other factors are equal, proximity tips the ranking."""
+        no_bonus = _make_candidate(
+            content="no_bonus", recency_hours=0.0, importance=0.5,
+            relevance=0.5, proximity=0.0,
+        )
+        with_bonus = _make_candidate(
+            content="with_bonus", recency_hours=0.0, importance=0.5,
+            relevance=0.5, proximity=1.0,
+        )
         result = rank([no_bonus, with_bonus])
         assert result[0].content == "with_bonus"
 
@@ -170,9 +176,15 @@ class TestRankV2:
     def test_custom_weights(self):
         """Custom weights change ranking order."""
         # High recency, low relevance
-        a = _make_candidate(content="recency_heavy", recency_hours=0.0, importance=0.5, relevance=0.1, room_bonus=0.0)
+        a = _make_candidate(
+            content="recency_heavy", recency_hours=0.0, importance=0.5,
+            relevance=0.1, proximity=0.0,
+        )
         # Low recency, high relevance
-        b = _make_candidate(content="relevance_heavy", recency_hours=100.0, importance=0.5, relevance=0.9, room_bonus=0.0)
+        b = _make_candidate(
+            content="relevance_heavy", recency_hours=100.0, importance=0.5,
+            relevance=0.9, proximity=0.0,
+        )
 
         # With recency-heavy weights → a wins
         result_recency = rank([a, b], weights=(0.70, 0.10, 0.10, 0.10))

@@ -23,6 +23,7 @@ from memory_palace.models.memory import MemoryItem
 if TYPE_CHECKING:
     from memory_palace.foundation.embedding import EmbeddingProvider
     from memory_palace.store.archival_store import ArchivalStore
+    from memory_palace.store.graph_store import GraphStore
     from memory_palace.store.recall_store import RecallStore
 
 logger = structlog.get_logger(__name__)
@@ -80,6 +81,7 @@ class HybridRetriever:
         recall_store: RecallStore instance for FTS5 keyword search.
         archival_store: ArchivalStore for vector semantic search (None = FTS5-only).
         embedding: EmbeddingProvider for computing query vectors (None = FTS5-only).
+        graph_store: GraphStore for real proximity scoring (None = binary 0/1 fallback).
     """
 
     def __init__(
@@ -87,10 +89,12 @@ class HybridRetriever:
         recall_store: RecallStore,
         archival_store: ArchivalStore | None = None,
         embedding: EmbeddingProvider | None = None,
+        graph_store: GraphStore | None = None,
     ) -> None:
         self._recall_store = recall_store
         self._archival_store = archival_store
         self._embedding = embedding
+        self._graph_store = graph_store
 
         self._hybrid_enabled = archival_store is not None and embedding is not None
 
@@ -151,13 +155,14 @@ class HybridRetriever:
         for r in results:
             item = r["item"]
             delta = (now - item.accessed_at).total_seconds() / 3600
+            proximity = self._compute_proximity(room, item.room)
             candidates.append(
                 ScoredCandidate(
                     item=item,
                     recency_hours=max(0.0, delta),
                     importance=item.importance,
                     relevance=normalize_bm25(r["rank"], all_ranks),
-                    room_bonus=1.0 if room and item.room == room else 0.0,
+                    proximity=proximity,
                 )
             )
 
@@ -239,6 +244,7 @@ class HybridRetriever:
                 relevance = 0.0
 
             delta = (now - item.accessed_at).total_seconds() / 3600
+            proximity = self._compute_proximity(room, item.room)
 
             candidates.append(
                 ScoredCandidate(
@@ -246,7 +252,7 @@ class HybridRetriever:
                     recency_hours=max(0.0, delta),
                     importance=item.importance,
                     relevance=relevance,
-                    room_bonus=1.0 if room and item.room == room else 0.0,
+                    proximity=proximity,
                 )
             )
 
@@ -257,6 +263,19 @@ class HybridRetriever:
             self._recall_store.touch(item.id)
 
         return ranked
+
+    # ── Private: Proximity computation ─────────────────────
+
+    def _compute_proximity(
+        self, query_room: str | None, memory_room: str
+    ) -> float:
+        """Compute proximity score using GraphStore or binary fallback."""
+        if not query_room:
+            return 0.0
+        if self._graph_store is not None:
+            return self._graph_store.proximity_score(query_room, memory_room)
+        # Fallback: binary match (v0.1 behaviour)
+        return 1.0 if memory_room == query_room else 0.0
 
     # ── Private: Empty query fallback ───────────────────────
 

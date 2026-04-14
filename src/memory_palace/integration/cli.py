@@ -61,47 +61,119 @@ def _resolve_persona_data_dir(
 
 
 def _build_memory_service(data_dir: Path, need_llm: bool = False):
-    """Build a MemoryService, optionally with an LLM provider."""
+    """Build a MemoryService with full v1.0 stack.
+
+    Wires embedding → archival → graph based on config.
+    Gracefully degrades: no API key → FTS-only, no kuzu → no graph.
+    """
     from memory_palace.service.memory_service import MemoryService
 
     llm = None
     if need_llm:
         llm = _build_llm_provider(data_dir)
 
-    return MemoryService(data_dir, llm=llm)
+    # Embedding + Archival
+    embedding = _build_embedding_provider(data_dir)
+    archival_store = None
+    if embedding is not None:
+        from memory_palace.store.archival_store import ArchivalStore
+
+        archival_store = ArchivalStore(data_dir=data_dir, embedding=embedding)
+
+    # Graph (optional — only when config.graph.enabled)
+    graph_store = None
+    try:
+        from memory_palace.config import Config
+
+        yaml_path = data_dir / "memory_palace.yaml"
+        cfg = Config.from_yaml(yaml_path) if yaml_path.exists() else Config()
+        if cfg.graph.enabled:
+            from memory_palace.store.graph_store import GraphStore
+
+            graph_store = GraphStore(data_dir)
+    except ImportError:
+        pass  # kuzu not installed — degrade gracefully
+
+    return MemoryService(
+        data_dir,
+        llm=llm,
+        archival_store=archival_store,
+        embedding=embedding,
+        graph_store=graph_store,
+    )
 
 
 def _build_llm_provider(data_dir: Path):
-    """Build an OpenAIProvider from config (YAML or defaults)."""
+    """Build an OpenAIProvider from config (YAML, env vars, or defaults)."""
+    from memory_palace.config import Config
     from memory_palace.foundation.llm import ModelConfig
     from memory_palace.foundation.openai_provider import OpenAIProvider
 
     yaml_path = data_dir / "memory_palace.yaml"
     if yaml_path.exists():
-        from memory_palace.config import Config
-
         cfg = Config.from_yaml(yaml_path)
-        model_config = ModelConfig(
-            provider=cfg.llm.provider,
-            model_id=cfg.llm.model_id,
-            base_url=cfg.llm.base_url,
-            max_tokens=cfg.llm.max_tokens,
-        )
     else:
-        model_config = ModelConfig()
+        # Config() reads MP_LLM__* environment variables via BaseSettings
+        cfg = Config()
+
+    model_config = ModelConfig(
+        provider=cfg.llm.provider,
+        model_id=cfg.llm.model_id,
+        base_url=cfg.llm.base_url,
+        max_tokens=cfg.llm.max_tokens,
+    )
 
     return OpenAIProvider(model_config)
 
 
-# ── Room list (from Config defaults) ─────────────────────────────────
+def _build_embedding_provider(data_dir: Path):
+    """Build an EmbeddingProvider from config (YAML or defaults).
 
-DEFAULT_ROOMS = [
-    ("general", "未分类通用记忆"),
-    ("preferences", "用户偏好"),
-    ("projects", "项目知识"),
-    ("people", "人物关系"),
-    ("skills", "技能记忆"),
-]
+    Returns None if no API key is available and provider is not local.
+    """
+    from memory_palace.config import Config
+    from memory_palace.foundation.embedding import EmbeddingConfig
+
+    yaml_path = data_dir / "memory_palace.yaml"
+    if yaml_path.exists():
+        cfg = Config.from_yaml(yaml_path)
+        emb_cfg = cfg.embedding
+    else:
+        emb_cfg = EmbeddingConfig()
+
+    if emb_cfg.provider == "local":
+        # Local embedding (sentence-transformers)
+        from memory_palace.foundation.local_embedding import LocalEmbedding
+
+        return LocalEmbedding(emb_cfg)
+    else:
+        # OpenAI-compatible embedding — requires API key
+        import os
+
+        if not os.environ.get("OPENAI_API_KEY"):
+            return None
+        from memory_palace.foundation.openai_embedding import OpenAIEmbedding
+
+        return OpenAIEmbedding(config=emb_cfg)
+
+
+# ── Room list (from Config) ───────────────────────────────────────────
+
+
+def _get_rooms() -> list[tuple[str, str]]:
+    """Load rooms from Config (single source of truth)."""
+    from memory_palace.config import Config
+    try:
+        cfg = Config()
+        return [(r.name, r.description) for r in cfg.rooms]
+    except Exception:
+        return [
+            ("general", "未分类通用记忆"),
+            ("preferences", "用户偏好"),
+            ("projects", "项目知识"),
+            ("people", "人物关系"),
+            ("skills", "技能记忆"),
+        ]
 
 
 # ── Commands ──────────────────────────────────────────────────────────
@@ -165,7 +237,7 @@ def search(
     try:
         path = _resolve_persona_data_dir(persona, data_dir)
         svc = _build_memory_service(path)
-        results = svc.search(query=query, top_k=top_k, room=room)
+        results = svc.search_sync(query=query, top_k=top_k, room=room)
 
         if not results:
             console.print("[yellow]未找到匹配的记忆。[/yellow]")
@@ -414,12 +486,41 @@ def rooms(
         table.add_column("房间", style="bold cyan")
         table.add_column("描述")
 
-        for name, desc in DEFAULT_ROOMS:
+        for name, desc in _get_rooms():
             table.add_row(name, desc)
 
         console.print(table)
     except Exception as exc:
         console.print(f"[red]✗ 获取房间列表失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+@app.command()
+def metrics(
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
+) -> None:
+    """查看运营指标（延迟、增长率等）。"""
+    try:
+        path = _resolve_persona_data_dir(persona, data_dir)
+        svc = _build_memory_service(path)
+        m = svc.get_metrics()
+
+        table = Table(title="Memory Palace — 运营指标")
+        table.add_column("指标", style="bold cyan")
+        table.add_column("值", justify="right")
+
+        table.add_row("搜索 P95 延迟", f"{m['search_p95_ms']:.1f} ms")
+        table.add_row("保存 P95 延迟", f"{m['save_p95_ms']:.1f} ms")
+        table.add_row("整理平均耗时", f"{m['curator_avg_duration_s']:.2f} s")
+        table.add_row("日增长率", f"{m['growth_rate_per_day']:.1f} 条/天")
+        table.add_row("总搜索次数", str(m["total_searches"]))
+        table.add_row("总保存次数", str(m["total_saves"]))
+        table.add_row("总整理次数", str(m["total_curations"]))
+
+        console.print(table)
+    except Exception as exc:
+        console.print(f"[red]✗ 获取指标失败：{exc}[/red]")
         raise typer.Exit(code=1) from exc
 
 
@@ -491,6 +592,59 @@ def export_cmd(
         console.print(f"  耗时: {report.duration_seconds:.2f}s")
     except Exception as exc:
         console.print(f"[red]✗ 导出失败：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+
+# ── Ingest command ────────────────────────────────────────────────────
+
+
+@app.command()
+def ingest(
+    file: str = typer.Argument(..., help="文档路径"),
+    data_dir: str = typer.Option("~/.memory_palace", help="数据目录"),
+    persona: str = typer.Option(None, help="Persona 名"),
+) -> None:
+    """5-pass 智能摄取文档."""
+    try:
+        path = _resolve_persona_data_dir(persona, data_dir)
+        llm = _build_llm_provider(path)
+
+        from memory_palace.engine.fact_extractor import FactExtractor
+        from memory_palace.engine.reconcile import ReconcileEngine
+        from memory_palace.service.ingest_pipeline import IngestPipeline
+        from memory_palace.service.memory_service import MemoryService
+
+        svc = MemoryService(path, llm=llm)
+        extractor = FactExtractor(llm)
+        reconciler = ReconcileEngine(llm)
+        pipeline = IngestPipeline(
+            memory_service=svc,
+            fact_extractor=extractor,
+            reconcile_engine=reconciler,
+            llm=llm,
+        )
+
+        file_path = Path(file).expanduser()
+        report = asyncio.run(pipeline.ingest_file(file_path))
+
+        console.print("[green]✓[/green] 摄取完成")
+        console.print(f"  输入字符: {report.total_input_chars}")
+        console.print(f"  创建记忆: {report.memories_created}")
+        console.print(f"  创建关联: {report.relations_created}")
+        console.print(f"  耗时: {report.duration_seconds:.2f}s")
+
+        if report.pass_results.get("diff", {}).get("skipped"):
+            console.print("  [yellow]文档已处理过，跳过[/yellow]")
+
+        if report.errors:
+            console.print(f"  [yellow]错误: {len(report.errors)}[/yellow]")
+            for err in report.errors:
+                console.print(f"    ⚠ {err}")
+    except FileNotFoundError as exc:
+        console.print(f"[red]✗ 文件不存在：{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        console.print(f"[red]✗ 摄取失败：{exc}[/red]")
         raise typer.Exit(code=1) from exc
 
 
@@ -687,18 +841,17 @@ def serve(
         path = _resolve_data_dir(data_dir)
 
         from memory_palace.integration.mcp_context import MCPServiceManager
-        from memory_palace.integration.mcp_server import mcp
+        from memory_palace.integration.mcp_server import mcp, run_stdio_server
 
         MCPServiceManager.configure(path)
 
-        console.print(
-            f"[green]✓[/green] MCP Server 启动  transport={transport}  data_dir={path}"
-        )
-
         if transport == "http":
+            console.print(
+                f"[green]✓[/green] MCP Server 启动  transport={transport}  data_dir={path}"
+            )
             mcp.run(transport="streamable-http", host=host, port=port)
         else:
-            mcp.run(transport="stdio")
+            run_stdio_server()
     except Exception as exc:
         console.print(f"[red]✗ MCP Server 启动失败：{exc}[/red]")
         raise typer.Exit(code=1) from exc

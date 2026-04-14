@@ -53,7 +53,7 @@ DEFAULT_ROOMS = [
 
 
 class TestMemoryHealthScore:
-    """MemoryHealthScore holds five dimensions + overall property."""
+    """MemoryHealthScore holds six dimensions + overall property."""
 
     def test_all_dimensions_default_zero(self):
         """All dimensions default to 0.0."""
@@ -63,17 +63,19 @@ class TestMemoryHealthScore:
         assert score.coverage == 0.0
         assert score.diversity == 0.0
         assert score.coherence == 0.0
+        assert score.operations == 0.0
 
     def test_overall_weighted_average(self):
-        """overall = 0.25·freshness + 0.25·efficiency + 0.15·coverage + 0.15·diversity + 0.20·coherence."""
+        """Verify 6-dimension weighted average calculation."""
         score = MemoryHealthScore(
             freshness=1.0,
             efficiency=0.8,
             coverage=0.6,
             diversity=0.4,
             coherence=0.5,
+            operations=0.9,
         )
-        expected = 1.0 * 0.25 + 0.8 * 0.25 + 0.6 * 0.15 + 0.4 * 0.15 + 0.5 * 0.20
+        expected = 1.0 * 0.20 + 0.8 * 0.20 + 0.6 * 0.15 + 0.4 * 0.10 + 0.5 * 0.15 + 0.9 * 0.20
         assert score.overall == pytest.approx(expected)
 
     def test_perfect_score_is_one(self):
@@ -84,6 +86,7 @@ class TestMemoryHealthScore:
             coverage=1.0,
             diversity=1.0,
             coherence=1.0,
+            operations=1.0,
         )
         assert score.overall == pytest.approx(1.0)
 

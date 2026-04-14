@@ -126,6 +126,7 @@ class CuratorGraph:
         rooms_config: list[RoomConfig] | None = None,
         ebbinghaus_config: EbbinghausConfig | None = None,
         heartbeat: HeartbeatController | None = None,
+        metrics: object | None = None,
     ) -> None:
         self._ms = memory_service
         self._recall_store = recall_store
@@ -136,6 +137,7 @@ class CuratorGraph:
         self._rooms_config = rooms_config or []
         self._ebbinghaus_config = ebbinghaus_config
         self._heartbeat = heartbeat
+        self._metrics = metrics
 
     async def run(self, since: datetime | None = None) -> CuratorReport:
         """Execute the full Curator pipeline.
@@ -341,8 +343,11 @@ class CuratorGraph:
                     state.memories_pruned += 1
                     state.ebbinghaus_pruned += 1
             else:
-                # Legacy simple threshold
-                if item.importance < 0.05:
+                # Legacy simple threshold — use config if available
+                prune_threshold = 0.05
+                if self._ebbinghaus_config is not None:
+                    prune_threshold = self._ebbinghaus_config.prune_threshold
+                if item.importance < prune_threshold:
                     self._recall_store.update_status(item.id, MemoryStatus.PRUNED)
                     state.pruned_ids.append(item.id)
                     state.memories_pruned += 1
@@ -350,7 +355,7 @@ class CuratorGraph:
         return CuratorPhase.HEALTH_CHECK
 
     def _health_check(self, state: CuratorState) -> CuratorPhase:
-        """Compute 5-dimension health score."""
+        """Compute 6-dimension health score (including operations)."""
         # Gather all core items
         core_items: list[MemoryItem] = []
         for block in self._core_store.list_blocks():
@@ -358,7 +363,15 @@ class CuratorGraph:
 
         recall_items = self._recall_store.get_recent(200)
 
-        state.health = compute_health(core_items, recall_items, self._rooms_config)
+        # Pass metrics_summary for operations dimension
+        metrics_summary = None
+        if self._metrics is not None:
+            try:
+                metrics_summary = self._metrics.summary
+            except Exception:
+                pass
+
+        state.health = compute_health(core_items, recall_items, self._rooms_config, metrics_summary)
         return CuratorPhase.REPORT
 
     def _report(self, state: CuratorState, start_time: float) -> CuratorPhase:

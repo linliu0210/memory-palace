@@ -26,6 +26,24 @@ def _tokenize_cjk(text: str) -> str:
     return _CJK_RE.sub(r" \1 ", text)
 
 
+def _quote_fts_token(token: str) -> str:
+    """Quote one plain-text token so FTS5 treats it as data, not syntax."""
+    escaped = token.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _normalize_fts_query(query: str) -> str:
+    """Normalize user input into a plain full-text MATCH query.
+
+    We intentionally treat user input as plain search text, not raw FTS syntax.
+    After CJK tokenization, each token is quoted as an FTS phrase token so
+    hyphenated values like ``2026-04-13`` or ``foo-bar`` do not get parsed as
+    column filters or operators.
+    """
+    tokens = [token for token in _tokenize_cjk(query).split() if token]
+    return " ".join(_quote_fts_token(token) for token in tokens)
+
+
 def _row_to_memory_item(row: sqlite3.Row) -> MemoryItem:
     """Convert a database row to a MemoryItem."""
     return MemoryItem(
@@ -69,7 +87,7 @@ class RecallStore:
             data_dir: Root data directory. Database stored at {data_dir}/recall.db.
         """
         self._db_path = data_dir / "recall.db"
-        self._conn = sqlite3.connect(str(self._db_path))
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         # R19: WAL mode for concurrent read support
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -177,7 +195,9 @@ class RecallStore:
         Returns:
             List of dicts with 'item' (MemoryItem) and 'rank' (float, raw BM25).
         """
-        fts_query = _tokenize_cjk(query)
+        fts_query = _normalize_fts_query(query)
+        if not fts_query:
+            return []
         if room is not None:
             sql = """
                 SELECT m.*, f.rank
@@ -333,4 +353,37 @@ class RecallStore:
             f"UPDATE memories SET {field} = ? WHERE id = ?",  # noqa: S608
             (value, memory_id),
         )
+
+        # Sync FTS5 index for searchable fields
+        _FTS_FIELDS = {"content", "tags", "room"}
+        if field in _FTS_FIELDS:
+            row = self._conn.execute(
+                "SELECT rowid, content, tags, room FROM memories WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            if row is not None:
+                rowid = row["rowid"]
+                fts_content = _tokenize_cjk(row["content"])
+                raw_tags = json.loads(row["tags"]) if row["tags"] else []
+                fts_tags = _tokenize_cjk(
+                    row["room"] if not raw_tags else " ".join(raw_tags)
+                )
+                self._conn.execute(
+                    "DELETE FROM memories_fts WHERE rowid = ?", (rowid,)
+                )
+                self._conn.execute(
+                    "INSERT INTO memories_fts(rowid, content, tags, room) VALUES (?, ?, ?, ?)",
+                    (rowid, fts_content, fts_tags, row["room"]),
+                )
+
         self._conn.commit()
+
+    def close(self) -> None:
+        """Close the underlying SQLite connection."""
+        self._conn.close()
+
+    def __del__(self) -> None:
+        try:
+            self._conn.close()
+        except Exception:
+            pass

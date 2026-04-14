@@ -16,9 +16,12 @@ Ref: CONVENTIONS_V10.md §7, TASK_R18, TASK_R19
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from datetime import datetime
 from typing import Any
 
+import structlog
 from fastmcp import FastMCP
 
 from memory_palace.integration.mcp_context import MCPServiceManager
@@ -44,9 +47,37 @@ def _ok(data: Any) -> dict:
     return {"success": True, "data": data}
 
 
+def _configure_stdio_logging() -> None:
+    """Silence non-critical structlog output for stdio MCP transport.
+
+    stdio MCP clients expect stdout to contain protocol frames only. We also
+    suppress normal structlog chatter on stderr so clients like Codex do not
+    treat log noise as transport failures.
+    """
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging.CRITICAL),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        cache_logger_on_first_use=True,
+    )
+
+
+def run_stdio_server() -> None:
+    """Run a stdio-safe MCP server with no banner or normal log output."""
+    _configure_stdio_logging()
+    mcp.run(show_banner=False, log_level="ERROR")
+
+
 # ── R19: Validation Helpers ───────────────────────────────────
 
-VALID_ROOMS = {"general", "preferences", "projects", "people", "skills"}
+
+def _get_valid_rooms() -> set[str]:
+    """Load valid room names from Config (single source of truth)."""
+    from memory_palace.config import Config
+    try:
+        cfg = Config()
+        return {r.name for r in cfg.rooms}
+    except Exception:
+        return {"general", "preferences", "projects", "people", "skills"}
 
 
 def _validate_importance(importance: float) -> dict | None:
@@ -57,9 +88,12 @@ def _validate_importance(importance: float) -> dict | None:
 
 
 def _validate_room(room: str) -> str:
-    """Return room name; fallback to 'general' if unknown."""
-    if room in VALID_ROOMS:
+    """Return room name; warn and fallback to 'general' if unknown."""
+    valid = _get_valid_rooms()
+    if room in valid:
         return room
+    import structlog
+    structlog.get_logger().warning("unknown_room_fallback", room=room, fallback="general")
     return "general"
 
 
@@ -103,15 +137,23 @@ def _serialize_report(report: Any) -> dict:
     return report.model_dump(mode="json")
 
 
-# ── Default Rooms (matches cli.py) ───────────────────────────
+# ── Default Rooms (loaded from Config) ────────────────────
 
-DEFAULT_ROOMS = [
-    {"name": "general", "description": "未分类通用记忆"},
-    {"name": "preferences", "description": "用户偏好"},
-    {"name": "projects", "description": "项目知识"},
-    {"name": "people", "description": "人物关系"},
-    {"name": "skills", "description": "技能记忆"},
-]
+
+def _get_default_rooms() -> list[dict]:
+    """Load room definitions from Config."""
+    from memory_palace.config import Config
+    try:
+        cfg = Config()
+        return [{"name": r.name, "description": r.description} for r in cfg.rooms]
+    except Exception:
+        return [
+            {"name": "general", "description": "未分类通用记忆"},
+            {"name": "preferences", "description": "用户偏好"},
+            {"name": "projects", "description": "项目知识"},
+            {"name": "people", "description": "人物关系"},
+            {"name": "skills", "description": "技能记忆"},
+        ]
 
 
 # ── Implementation Functions ─────────────────────────────────
@@ -150,7 +192,7 @@ async def _impl_search_memory(
         return err
 
     svc = await MCPServiceManager.get_service()
-    results = svc.search(query=query, top_k=top_k, room=room)
+    results = await svc.search(query=query, top_k=top_k, room=room)
     return _ok([_serialize_item(item) for item in results])
 
 
@@ -254,10 +296,19 @@ async def _impl_get_health() -> dict:
         cfg = Config()
         rooms_config = cfg.rooms
 
-    health = compute_health(core_items, recall_items, rooms_config)
+    # R23: include operational metrics in health computation
+    metrics_summary = svc.get_metrics()
+
+    health = compute_health(core_items, recall_items, rooms_config, metrics_summary)
     result = health.model_dump()
     result["overall"] = health.overall
     return _ok(result)
+
+
+async def _impl_get_metrics() -> dict:
+    """Metrics implementation."""
+    svc = await MCPServiceManager.get_service()
+    return _ok(svc.get_metrics())
 
 
 async def _impl_get_stats() -> dict:
@@ -289,7 +340,11 @@ async def _impl_get_context(
     from memory_palace.service.context_compiler import ContextCompiler
     from memory_palace.service.hybrid_retriever import HybridRetriever
 
-    retriever = HybridRetriever(svc._recall_store)
+    # Use fully-configured retriever when archival+embedding are available,
+    # otherwise degrade to FTS-only retriever.
+    retriever = svc.get_hybrid_retriever()
+    if retriever is None:
+        retriever = HybridRetriever(svc._recall_store)
     compiler = ContextCompiler(svc, retriever)
     return await compiler.compile(query=query, top_k=top_k)
 
@@ -432,9 +487,9 @@ async def reflect_now() -> dict:
 
 @mcp.tool()
 async def get_health() -> dict:
-    """Get 5-dimension health assessment of the Memory Palace.
+    """Get 6-dimension health assessment of the Memory Palace.
 
-    Dimensions: freshness, efficiency, coverage, diversity, coherence.
+    Dimensions: freshness, efficiency, coverage, diversity, coherence, operations.
 
     Returns:
         Health score dict with all dimensions and overall score.
@@ -453,7 +508,7 @@ async def list_rooms() -> list[dict]:
         List of room dicts with name and description.
     """
     try:
-        return DEFAULT_ROOMS
+        return _get_default_rooms()
     except Exception as exc:
         return [_error(str(exc), INTERNAL)]
 
@@ -507,6 +562,66 @@ async def get_context(
         return await _impl_get_context(query, top_k)
     except Exception as exc:
         return f"Error compiling context: {exc}"
+
+
+# ── Ingest Tool (R25) ─────────────────────────────────────────
+
+
+async def _impl_ingest_document(text: str, source_id: str = "") -> dict:
+    """Ingest implementation — 5-pass pipeline."""
+    svc = await MCPServiceManager.get_service()
+    if svc._llm is None:
+        return _error(
+            "LLM not configured. Set up memory_palace.yaml with LLM settings.",
+            LLM_ERROR,
+        )
+
+    from memory_palace.engine.fact_extractor import FactExtractor
+    from memory_palace.engine.reconcile import ReconcileEngine
+    from memory_palace.service.ingest_pipeline import IngestPipeline
+
+    extractor = FactExtractor(svc._llm)
+    reconciler = ReconcileEngine(svc._llm)
+    pipeline = IngestPipeline(
+        memory_service=svc,
+        fact_extractor=extractor,
+        reconcile_engine=reconciler,
+        llm=svc._llm,
+        graph_store=svc._graph_store,
+    )
+
+    report = await pipeline.ingest(text, source_id=source_id)
+    return {
+        "total_input_chars": report.total_input_chars,
+        "pass_results": report.pass_results,
+        "memories_created": report.memories_created,
+        "relations_created": report.relations_created,
+        "duration_seconds": report.duration_seconds,
+        "errors": report.errors,
+    }
+
+
+@mcp.tool()
+async def ingest_document(text: str, source_id: str = "") -> dict:
+    """5-pass intelligent document ingestion.
+
+    Pass 1 — DIFF: skip if already processed.
+    Pass 2 — EXTRACT: extract atomic facts.
+    Pass 3 — MAP: assign room + importance.
+    Pass 4 — LINK: discover relations (if GraphStore available).
+    Pass 5 — UPDATE: reconcile & write.
+
+    Args:
+        text: Raw document text to ingest.
+        source_id: Optional source identifier for deduplication tracking.
+
+    Returns:
+        Dict with ingest report (memories_created, relations_created, etc.).
+    """
+    try:
+        return _ok(await _impl_ingest_document(text, source_id))
+    except Exception as exc:
+        return _error(str(exc), INTERNAL)
 
 
 # ── Batch Import / Export Tools (R21) ─────────────────────────
@@ -697,6 +812,18 @@ async def switch_persona(name: str) -> dict:
     except Exception as exc:
         return _error(str(exc), INTERNAL)
 
+@mcp.tool()
+async def get_metrics() -> dict:
+    """Get operational metrics of the Memory Palace.
+
+    Returns:
+        Dict with search_p95_ms, save_p95_ms, curator_avg_duration_s,
+        growth_rate_per_day, total_searches, total_saves, total_curations.
+    """
+    try:
+        return await _impl_get_metrics()
+    except Exception as exc:
+        return _error(str(exc), INTERNAL)
 
 # ── 7 Resources ──────────────────────────────────────────
 # Resources call _impl_* functions directly (not decorated FunctionTool objects).
@@ -704,7 +831,7 @@ async def switch_persona(name: str) -> dict:
 
 @mcp.resource("palace://health")
 async def health_resource() -> str:
-    """Real-time 5-dimension health assessment."""
+    """Real-time 6-dimension health assessment."""
     result = await _impl_get_health()
     return json.dumps(result, ensure_ascii=False)
 
@@ -719,7 +846,7 @@ async def stats_resource() -> str:
 @mcp.resource("palace://rooms")
 async def rooms_resource() -> str:
     """List of all configured rooms."""
-    return json.dumps(DEFAULT_ROOMS, ensure_ascii=False)
+    return json.dumps(_get_default_rooms(), ensure_ascii=False)
 
 
 @mcp.resource("palace://context/{query}")
@@ -749,9 +876,16 @@ async def personas_resource() -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+@mcp.resource("palace://metrics")
+async def metrics_resource() -> str:
+    """Operational metrics summary."""
+    result = await _impl_get_metrics()
+    return json.dumps(result, ensure_ascii=False)
+
+
 # ── Entry Point ──────────────────────────────────────────────
 
 
 def main():
     """Run the MCP server with stdio transport."""
-    mcp.run()
+    run_stdio_server()

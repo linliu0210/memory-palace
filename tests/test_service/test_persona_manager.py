@@ -171,11 +171,11 @@ class TestDataIsolation:
         svc_a.save("Alice private memo", importance=0.5, room="general")
 
         # Search in persona B — should find nothing
-        results_b = svc_b.search("Alice")
+        results_b = svc_b.search_sync("Alice")
         assert len(results_b) == 0
 
         # Search in persona A — should find it
-        results_a = svc_a.search("Alice")
+        results_a = svc_a.search_sync("Alice")
         assert len(results_a) == 1
 
 

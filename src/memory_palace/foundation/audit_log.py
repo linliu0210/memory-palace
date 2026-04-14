@@ -23,6 +23,7 @@ class AuditAction(StrEnum):
     PROMOTE = "promote"
     DEMOTE = "demote"
     ACCESS = "access"
+    INGEST = "ingest"
 
 
 class AuditEntry(BaseModel):
