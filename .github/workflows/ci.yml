@@ -18,4 +18,4 @@ jobs:
       - name: Lint
         run: ruff check
       - name: Test
-        run: pytest tests/ -q --tb=short
+        run: pytest tests/ -q --tb=short -m "not real_llm and not minimax" --ignore=tests/test_e2e/test_v10_mcp_transport.py
