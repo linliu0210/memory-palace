@@ -19,3 +19,6 @@ build/
 # IDE
 .vscode/
 .idea/
+.env
+.DS_Store
+.claude/
