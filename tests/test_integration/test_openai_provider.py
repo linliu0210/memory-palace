@@ -6,6 +6,7 @@ No real API key required — tests use invalid endpoints.
 
 from unittest.mock import AsyncMock, patch
 
+import litellm
 import pytest
 
 from memory_palace.foundation.llm import LLMProvider, ModelConfig
@@ -40,43 +41,47 @@ class TestOpenAIProviderProtocol:
 
 
 class TestOpenAIProviderErrors:
-    """Error handling — strict mapping from httpx errors."""
+    """Error handling — strict mapping from litellm errors."""
 
     @pytest.mark.asyncio
     async def test_connect_error_maps_to_connection_error(self):
-        """httpx.ConnectError → ConnectionError (strict)."""
-        import httpx
-
+        """litellm.APIConnectionError → ConnectionError (strict)."""
         provider = OpenAIProvider(ModelConfig(), timeout=1.0)
 
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-            mock_post.side_effect = httpx.ConnectError("refused")
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+            mock_completion.side_effect = litellm.APIConnectionError(
+                message="refused",
+                llm_provider="openai",
+                model="gpt-4o-mini",
+            )
             with pytest.raises(ConnectionError, match="Failed to connect"):
                 await provider.complete("test")
 
     @pytest.mark.asyncio
     async def test_timeout_maps_to_connection_error(self):
-        """httpx.TimeoutException → ConnectionError (strict)."""
-        import httpx
-
+        """litellm.Timeout → ConnectionError (strict)."""
         provider = OpenAIProvider(ModelConfig(), timeout=0.5)
 
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-            mock_post.side_effect = httpx.ReadTimeout("timed out")
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+            mock_completion.side_effect = litellm.Timeout(
+                message="timed out",
+                model="gpt-4o-mini",
+                llm_provider="openai",
+            )
             with pytest.raises(ConnectionError, match="timed out"):
                 await provider.complete("test")
 
     @pytest.mark.asyncio
-    async def test_non_200_maps_to_runtime_error(self):
-        """Non-200 API response → RuntimeError (strict)."""
-
+    async def test_api_error_maps_to_runtime_error(self):
+        """litellm.APIError → RuntimeError (strict)."""
         provider = OpenAIProvider(ModelConfig(), timeout=1.0)
 
-        mock_response = AsyncMock()
-        mock_response.status_code = 429
-        mock_response.text = "Rate limit exceeded"
-
-        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value = mock_response
-            with pytest.raises(RuntimeError, match="429"):
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
+            mock_completion.side_effect = litellm.APIError(
+                message="Rate limit exceeded",
+                status_code=429,
+                model="gpt-4o-mini",
+                llm_provider="openai",
+            )
+            with pytest.raises(RuntimeError, match="Rate limit exceeded"):
                 await provider.complete("test")

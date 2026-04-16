@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-import httpx
+import litellm
 
 from memory_palace.foundation.llm import ModelConfig, get_api_key
 
@@ -52,39 +52,36 @@ class OpenAIProvider:
             ConnectionError: If the API endpoint is unreachable.
             RuntimeError: If the API returns a non-200 status code.
         """
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-
-        body: dict = {
-            "model": self._config.model_id,
+        kwargs: dict = {
+            "model": f"{self._config.provider}/{self._config.model_id}",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self._config.max_tokens,
+            "timeout": self._timeout,
         }
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
+        if self._config.base_url:
+            kwargs["api_base"] = self._config.base_url
         if (
             response_format is not None
             and self._config.provider not in _NO_JSON_FORMAT_PROVIDERS
         ):
-            body["response_format"] = {"type": "json_object"}
-
-        url = f"{self._config.base_url}/chat/completions"
+            kwargs["response_format"] = {"type": "json_object"}
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(url, json=body, headers=headers)
-        except httpx.ConnectError as exc:
-            raise ConnectionError(
-                f"Failed to connect to LLM API at {self._config.base_url}: {exc}"
-            ) from exc
-        except httpx.TimeoutException as exc:
+            response = await litellm.acompletion(**kwargs)
+        except litellm.Timeout as exc:
             raise ConnectionError(
                 f"LLM API request timed out after {self._timeout}s: {exc}"
             ) from exc
+        except litellm.APIConnectionError as exc:
+            raise ConnectionError(
+                f"Failed to connect to LLM API at {self._config.base_url}: {exc}"
+            ) from exc
+        except litellm.APIError as exc:
+            raise RuntimeError(f"LLM API error: {exc}") from exc
 
-        if resp.status_code != 200:
-            raise RuntimeError(f"LLM API error {resp.status_code}: {resp.text}")
-
-        content = resp.json()["choices"][0]["message"]["content"]
+        content = response.choices[0].message.content
         # Strip <think>...</think> tags from reasoning models (MiniMax, DeepSeek, etc.)
         content = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
         # Strip markdown code fences (```json ... ``` or ``` ... ```)
