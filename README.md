@@ -39,7 +39,7 @@ uv sync --extra graph
 
 ### 1. 配置 LLM
 
-Memory Palace 支持任何 OpenAI 兼容 API。通过环境变量配置：
+Memory Palace 通过 **LiteLLM** 统一接入 100+ LLM Provider，内置 retry / timeout / streaming 支持。通过环境变量配置：
 
 ```bash
 # ── MiniMax（推荐）──────────────────────────
@@ -47,7 +47,6 @@ export MINIMAX_API_KEY="sk-cp-..."
 export MP_LLM__PROVIDER="minimax"
 export MP_LLM__MODEL_ID="MiniMax-M2.5"
 export MP_LLM__BASE_URL="https://api.minimaxi.com/v1"
-#                          ↑ 注意是 minimaxi（多一个 i）
 
 # ── OpenAI ──────────────────────────────────
 export OPENAI_API_KEY="sk-..."
@@ -58,6 +57,11 @@ export DEEPSEEK_API_KEY="sk-..."
 export MP_LLM__PROVIDER="deepseek"
 export MP_LLM__MODEL_ID="deepseek-chat"
 export MP_LLM__BASE_URL="https://api.deepseek.com/v1"
+
+# ── Anthropic / Claude ──────────────────────
+export ANTHROPIC_API_KEY="sk-ant-..."
+export MP_LLM__PROVIDER="anthropic"
+export MP_LLM__MODEL_ID="claude-sonnet-4-6"
 ```
 
 也可以通过 YAML 配置文件（放在数据目录下）：
@@ -292,16 +296,15 @@ memory_palace:
 
 ---
 
-## MiniMax 配置说明
+## Provider 适配说明
 
-Memory Palace 内置支持 MiniMax 推理模型，已处理以下兼容性问题：
+LiteLLM 已自动处理绝大多数 Provider 差异（鉴权、请求格式、错误重试、超时控制等）。Memory Palace 在 LiteLLM 之上保留了一层轻量后处理：
 
-| 问题 | 处理方式 |
-|------|----------|
-| `<think>` 思考标签 | 在 `OpenAIProvider` 层自动剥离输出中的 `<think>...</think>` |
-| Markdown 代码围栏 | 自动剥离 ` ```json ... ``` ` 包裹 |
-| 不支持 `response_format: json_object` | 自动按 provider 跳过该参数 |
-| Base URL 特殊 | 必须用 `api.minimaxi.com`（不是 `api.minimax.chat`） |
+| 后处理 | 说明 |
+|--------|------|
+| `<think>` 思考标签剥离 | 推理模型（MiniMax、DeepSeek 等）输出中可能包含 `<think>...</think>`，在返回前自动清理 |
+| Markdown 代码围栏剥离 | 自动去除 ` ```json ... ``` ` 包裹，方便下游直接解析 JSON |
+| `response_format` 降级 | 对不支持 `json_object` 的 Provider（如 MiniMax）自动跳过该参数 |
 
 > **注意**：LLM 仍然完整执行推理（thinking），只是返回文本中的 `<think>` 标签被剥离，不影响推理质量。
 

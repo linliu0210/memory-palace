@@ -1186,10 +1186,10 @@ DIFF → EXTRACT → MAP → LINK → UPDATE
 class LLMProvider(Protocol):
     async def complete(self, prompt: str, ...) -> str: ...
 
-# 真实实现
+# 真实实现（通过 LiteLLM 统一接入）
 class OpenAIProvider:
     async def complete(self, prompt, ...) -> str:
-        return await httpx_call(...)
+        return await litellm.acompletion(...)
 
 # 测试用的假实现
 class MockLLM:
